@@ -1,5 +1,11 @@
 /* @format */
-import React, { createContext, useMemo, useContext, ReactNode } from 'react'
+import React, {
+  createContext,
+  useMemo,
+  useContext,
+  ReactNode,
+  useEffect
+} from 'react'
 import { useLocation } from 'react-router'
 import { useMountedEffect } from './custom-hooks'
 import * as api from './api'
@@ -22,6 +28,8 @@ import {
 import { SavedSegment, SegmentData } from './filtering/segments'
 import { useDefiniteLocationState } from './navigation/use-definite-location-state'
 import { useClearExpandedSegmentModeOnFilterClear } from './nav-menu/segments/segment-menu'
+import { useMetricsInfoContext } from './stats/reports/metrics-info-context'
+import { getFiltersByKeyPrefix, hasConversionGoalFilter } from './util/filters'
 
 const queryContextDefaultValue = {
   query: queryDefaultValue,
@@ -47,7 +55,7 @@ export default function QueryContextProvider({
     SavedSegment & { segment_data: SegmentData }
   >('expandedSegment')
   const site = useSiteContext()
-
+  const { setValue: setMetricsInfoValue } = useMetricsInfoContext()
   const {
     compare_from,
     compare_to,
@@ -124,6 +132,16 @@ export default function QueryContextProvider({
   ])
 
   useClearExpandedSegmentModeOnFilterClear({ expandedSegment, query })
+
+  useEffect(() => {
+    const newValue = {
+      is_filtered_by_goal: hasConversionGoalFilter({ filters }),
+      is_filtered_by_page: getFiltersByKeyPrefix({ filters }, 'page').length > 0
+    }
+    setMetricsInfoValue(newValue)
+    // need to handle filters inside segment, when applying a segment...
+  }, [setMetricsInfoValue, filters])
+
   useSaveTimePreferencesToStorage({
     site,
     period,

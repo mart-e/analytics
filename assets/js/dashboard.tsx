@@ -20,6 +20,9 @@ import {
   GoToSites,
   SomethingWentWrongMessage
 } from './dashboard/error/something-went-wrong'
+import MetricsInfoContextProvider, {
+  parseMetricsInfoFromDataset
+} from './dashboard/stats/reports/metrics-info-context'
 
 timer.start()
 
@@ -67,7 +70,11 @@ if (container && container.dataset) {
                   : { loggedIn: false, role: null, id: null }
               }
             >
-              <RouterProvider router={router} />
+              <MetricsInfoContextProvider
+                initialValue={parseMetricsInfoFromDataset(container.dataset)}
+              >
+                <RouterProvider router={router} />
+              </MetricsInfoContextProvider>
             </UserContextProvider>
           </SiteContextProvider>
         </ThemeContextProvider>

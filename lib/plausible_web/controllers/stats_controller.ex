@@ -82,7 +82,9 @@ defmodule PlausibleWeb.StatsController do
           flags: flags,
           is_dbip: is_dbip(),
           dogfood_page_path: dogfood_page_path,
-          load_dashboard_js: true
+          load_dashboard_js: true,
+          graphable_metrics_input:
+            site |> resolve_dashboard_query(conn.query_string) |> get_graphable_metrics_input()
         )
 
       !stats_start_date && can_see_stats? ->
@@ -370,7 +372,11 @@ defmodule PlausibleWeb.StatsController do
           theme: conn.params["theme"],
           flags: flags,
           is_dbip: is_dbip(),
-          load_dashboard_js: true
+          load_dashboard_js: true,
+          graphable_metrics_input:
+            shared_link.site
+            |> resolve_dashboard_query(conn.query_string)
+            |> get_graphable_metrics_input()
         )
 
       Sites.locked?(shared_link.site) ->
@@ -393,6 +399,86 @@ defmodule PlausibleWeb.StatsController do
         {flag, FunWithFlags.enabled?(flag, for: user) || FunWithFlags.enabled?(flag, for: site)}
       end)
       |> Map.new()
+
+  def get_graphable_metrics_input(nil) do
+    %{is_filtered_by_goal: false, is_filtered_by_page: false}
+  end
+
+  def get_graphable_metrics_input(query) do
+    filtered_by_goal? =
+      Plausible.Stats.Filters.filtering_on_dimension?(query, "event:goal",
+        behavioral_filters: :ignore
+      )
+
+    filtered_by_page? =
+      Plausible.Stats.Filters.filtering_on_dimension?(query, "event:page",
+        behavioral_filters: :ignore
+      )
+
+    %{is_filtered_by_goal: filtered_by_goal?, is_filtered_by_page: filtered_by_page?}
+  end
+
+  defp resolve_dashboard_query(site, query_string) do
+    # reimplements FE query parsing...
+    filters =
+      query_string
+      |> String.split("&")
+      |> Enum.map(&String.split(&1, "="))
+      |> Enum.filter(fn param ->
+        case param do
+          ["f", _value] -> true
+          _ -> false
+        end
+      end)
+      |> Enum.map(fn [_, unparsed_filter] ->
+        unparsed_filter |> String.split(",") |> Enum.map(&URI.decode/1)
+      end)
+      |> Enum.map(fn shorthand_filter ->
+        case shorthand_filter do
+          ["has_not_done", "goal" | clauses] when length(clauses) == 1 ->
+            ["has_not_done", ["is", "event:goal", clauses]]
+
+          ["is", "segment" | clauses] when length(clauses) == 1 ->
+            ["is", "segment", clauses |> Enum.map(&String.to_integer/1)]
+
+          [operator, "props:" <> custom_prop | clauses]
+          when length(clauses) >= 1 ->
+            [operator, "event:props:" <> custom_prop, clauses]
+
+          [operator, shorthand_dimension | clauses]
+          when length(clauses) >= 1 and
+                 shorthand_dimension in ["name", "page", "goal", "hostname"] ->
+            [operator, "event:" <> shorthand_dimension, clauses]
+
+          [operator, shorthand_dimension | clauses]
+          when length(clauses) >= 1 and
+                 shorthand_dimension not in ["name", "page", "goal", "hostname", "segment"] ->
+            [operator, "visit:" <> shorthand_dimension, clauses]
+
+          _ ->
+            nil
+        end
+      end)
+      |> Enum.reject(&is_nil/1)
+
+    case Plausible.Stats.Query.build(
+           site,
+           :internal,
+           %{
+             "site_id" => site.domain,
+             "metrics" => ["visitors"],
+             "date_range" => "7d",
+             "filters" => filters
+           },
+           %{}
+         ) do
+      {:ok, query} ->
+        query
+
+      {:error, _} ->
+        nil
+    end
+  end
 
   defp is_dbip() do
     on_ee do
