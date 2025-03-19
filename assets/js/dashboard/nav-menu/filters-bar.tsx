@@ -196,7 +196,7 @@ export const FiltersBar = ({ accessors }: FiltersBarProps) => {
             start: 0,
             end: visibility?.visibleCount
           }}
-          className="overflow-hidden"
+          className="overflow-hidden transition-[width] ease-in motion-reduce:transition-none"
           style={{ width: visibility?.width ?? 0 }}
         />
       </div>
