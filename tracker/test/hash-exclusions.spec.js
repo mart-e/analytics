@@ -7,6 +7,6 @@ test.describe('combination of hash and exclusions script extensions', () => {
 
     await page.goto('/hash-exclusions.html#this/hash/should/be/ignored')
 
-    expect(await plausibleRequestMock, "should not have sent event").toBeNull()
+    expect(await plausibleRequestMock, 'should not have sent event').toBeNull()
   })
 })

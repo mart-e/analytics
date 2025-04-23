@@ -1,6 +1,8 @@
 {
   "tracker_script_version": 5,
   "scripts": {
+    "lint": "eslint",
+    "check-format": "prettier --check \"**/*.{js,mjs}\"",
     "deploy": "node compile.js",
     "test": "npm run deploy && npx playwright test",
     "test:local": "NODE_ENV=dev npm run deploy && npx playwright test",
@@ -10,14 +12,17 @@
   "license": "MIT",
   "dependencies": {
     "generatorics": "^1.1.0",
-    "handlebars": "^4.7.8",
     "uglify-js": "^3.19.3"
   },
   "devDependencies": {
+    "prettier": "^3.3.3",
     "express": "^4.21.2",
     "@playwright/test": "^1.48.1",
     "@types/node": "^22.13.4",
-    "eslint": "^9.20.1",
-    "eslint-plugin-playwright": "^2.2.0"
+    "eslint": "^9.23.0",
+    "eslint-plugin-playwright": "^2.2.0",
+    "eslint-config-prettier": "^10.1.1",
+    "globals": "^16.0.0",
+    "@eslint/js": "^9.23.0"
   }
 }

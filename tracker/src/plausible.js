@@ -4,11 +4,11 @@
   var location = window.location
   var document = window.document
 
-  {{#if compat}}
-  var scriptEl = document.getElementById('plausible');
-  {{else}}
-  var scriptEl = document.currentScript;
-  {{/if}}
+  if (compat) {
+    var scriptEl = document.getElementById('plausible')
+  } else {
+    var scriptEl = document.currentScript
+  }
   var endpoint = scriptEl.getAttribute('data-api') || defaultEndpoint(scriptEl)
   var dataDomain = scriptEl.getAttribute('data-domain')
 
@@ -22,14 +22,14 @@
   }
 
   function defaultEndpoint(el) {
-    {{#if compat}}
+    if (compat) {
     var pathArray = el.src.split( '/' );
     var protocol = pathArray[0];
     var host = pathArray[2];
     return protocol + '//' + host  + '/api/event';
-    {{else}}
+    } else {
     return new URL(el.src).origin + '/api/event'
-    {{/if}}
+    }
   }
 
   var currentEngagementIgnored
@@ -127,16 +127,16 @@
         u: currentEngagementURL,
         p: currentEngagementProps,
         e: engagementTime,
-        v: {{TRACKER_SCRIPT_VERSION}}
+        v: TRACKER_SCRIPT_VERSION
       }
 
       // Reset current engagement time metrics. They will restart upon when page becomes visible or the next SPA pageview
       runningEngagementStart = null
       currentEngagementTime = 0
 
-      {{#if hash}}
-      payload.h = 1
-      {{/if}}
+      if (hash) {
+        payload.h = 1
+      }
 
       sendRequest(endpoint, payload)
     }
@@ -176,14 +176,14 @@
       maxScrollDepthPx = getCurrentScrollDepthPx()
     }
 
-    {{#unless local}}
-    if (/^localhost$|^127(\.[0-9]+){0,2}\.[0-9]+$|^\[::1?\]$/.test(location.hostname) || location.protocol === 'file:') {
-      return onIgnoredEvent(eventName, 'localhost', options)
+    if (!local) {
+      if (/^localhost$|^127(\.[0-9]+){0,2}\.[0-9]+$|^\[::1?\]$/.test(location.hostname) || location.protocol === 'file:') {
+        return onIgnoredEvent(eventName, 'localhost', options)
+      }
+      if ((window._phantom || window.__nightmare || window.navigator.webdriver || window.Cypress) && !window.__plausible) {
+        return onIgnoredEvent(eventName, null, options)
+      }
     }
-    if ((window._phantom || window.__nightmare || window.navigator.webdriver || window.Cypress) && !window.__plausible) {
-      return onIgnoredEvent(eventName, null, options)
-    }
-    {{/unless}}
     try {
       if (window.localStorage.plausible_ignore === 'true') {
         return onIgnoredEvent(eventName, 'localStorage flag', options)
@@ -191,7 +191,9 @@
     } catch (e) {
 
     }
-    {{#if exclusions}}
+   
+    if (exclusions) {
+
     var dataIncludeAttr = scriptEl && scriptEl.getAttribute('data-include')
     var dataExcludeAttr = scriptEl && scriptEl.getAttribute('data-exclude')
 
@@ -205,25 +207,24 @@
     function pathMatches(wildcardPath) {
       var actualPath = location.pathname
 
-      {{#if hash}}
-      actualPath += location.hash
-      {{/if}}
+      if (hash) {
+        actualPath += location.hash
+      }
 
       return actualPath.match(new RegExp('^' + wildcardPath.trim().replace(/\*\*/g, '.*').replace(/([^\.])\*/g, '$1[^\\s\/]*') + '\/?$'))
     }
-    {{/if}}
+  }
 
     var payload = {}
     payload.n = eventName
-    payload.v = {{TRACKER_SCRIPT_VERSION}}
+    payload.v = TRACKER_SCRIPT_VERSION
 
-    {{#if manual}}
-    var customURL = options && options.u
-
-    payload.u = customURL ? customURL : location.href
-    {{else}}
-    payload.u = location.href
-    {{/if}}
+    if (manual) {
+      var customURL = options && options.u
+      payload.u = customURL ? customURL : location.href
+    } else {
+      payload.u = location.href
+    }
 
     payload.d = dataDomain
     payload.r = document.referrer || null
@@ -235,14 +236,14 @@
     }
     if (options && options.interactive === false) {
       payload.i = false
-    }
-    {{#if revenue}}
+    }    
+    if (revenue) {
     if (options && options.revenue) {
       payload.$ = options.revenue
     }
-    {{/if}}
+    }
 
-    {{#if pageview_props}}
+    if (pageview_props) {
     var propAttributes = scriptEl.getAttributeNames().filter(function (name) {
       return name.substring(0, 6) === 'event-'
     })
@@ -256,11 +257,11 @@
     })
 
     payload.p = props
-    {{/if}}
+    }
 
-    {{#if hash}}
+    if (hash) {
     payload.h = 1
-    {{/if}}
+    }
 
     if (isPageview) {
       currentEngagementIgnored = false
@@ -276,7 +277,7 @@
   }
 
   function sendRequest(endpoint, payload, options) {
-    {{#if compat}}
+    if (compat) {
     var request = new XMLHttpRequest();
     request.open('POST', endpoint, true);
     request.setRequestHeader('Content-Type', 'text/plain');
@@ -288,7 +289,9 @@
         options && options.callback && options.callback({status: request.status})
       }
     }
-    {{else}}
+    }
+    else {
+
     if (window.fetch) {
       fetch(endpoint, {
         method: 'POST',
@@ -301,7 +304,7 @@
         options && options.callback && options.callback({status: response.status})
       }).catch(function() {})
     }
-    {{/if}}
+    }
   }
 
   var queue = (window.plausible && window.plausible.q) || []
@@ -310,13 +313,13 @@
     trigger.apply(this, queue[i])
   }
 
-  {{#unless manual}}
+  if (!manual) {
     var lastPage;
 
     function page(isSPANavigation) {
-      {{#unless hash}}
-      if (isSPANavigation && lastPage === location.pathname) return;
-      {{/unless}}
+      if (!hash) {
+        if (isSPANavigation && lastPage === location.pathname) return;
+      }
 
       lastPage = location.pathname
       trigger('pageview')
@@ -324,9 +327,10 @@
 
     var onSPANavigation = function() {page(true)}
 
-    {{#if hash}}
-    window.addEventListener('hashchange', onSPANavigation)
-    {{else}}
+    if (hash) {
+      window.addEventListener('hashchange', onSPANavigation)
+    } else {
+
     var his = window.history
     if (his.pushState) {
       var originalPushState = his['pushState']
@@ -336,7 +340,7 @@
       }
       window.addEventListener('popstate', onSPANavigation)
     }
-    {{/if}}
+    }
 
     function handleVisibilityChange() {
       if (!lastPage && document.visibilityState === 'visible') {
@@ -356,9 +360,239 @@
         page();
       }
     })
-  {{/unless}}
+  }
 
-  {{#if (any outbound_links file_downloads tagged_events)}}
-  {{> customEvents}}
-  {{/if}}
+  function getLinkEl(link) {
+    while (link && (typeof link.tagName === 'undefined' || !isLink(link) || !link.href)) {
+      link = link.parentNode
+    }
+    return link
+  }
+  
+  function isLink(element) {
+    return element && element.tagName && element.tagName.toLowerCase() === 'a'
+  }
+  
+  function shouldFollowLink(event, link) {
+    // If default has been prevented by an external script, Plausible should not intercept navigation.
+    if (event.defaultPrevented) { return false }
+  
+    var targetsCurrentWindow = !link.target || link.target.match(/^_(self|parent|top)$/i)
+    var isRegularClick = !(event.ctrlKey || event.metaKey || event.shiftKey) && event.type === 'click'
+    return targetsCurrentWindow && isRegularClick
+  }
+  
+  var MIDDLE_MOUSE_BUTTON = 1
+  
+  function handleLinkClickEvent(event) {
+    if (event.type === 'auxclick' && event.button !== MIDDLE_MOUSE_BUTTON) { return }
+  
+    var link = getLinkEl(event.target)
+    var hrefWithoutQuery = link && link.href && link.href.split('?')[0]
+  
+    if (tagged_events) {
+    if (isElementOrParentTagged(link, 0)) {
+      // Return to prevent sending multiple events with the same action.
+      // Clicks on tagged links are handled by another function.
+      return
+    }
+    }
+  
+    if (outbound_links) {
+      if (isOutboundLink(link)) {
+        return sendLinkClickEvent(event, link, { name: 'Outbound Link: Click', props: { url: link.href } })
+      }
+    }
+
+    if (file_downloads) {
+      if (isDownloadToTrack(hrefWithoutQuery)) {
+        return sendLinkClickEvent(event, link, { name: 'File Download', props: { url: hrefWithoutQuery } })
+      }
+    }
+  }
+  
+  function sendLinkClickEvent(event, link, eventAttrs) {
+    var followedLink = false
+  
+    function followLink() {
+      if (!followedLink) {
+        followedLink = true
+        window.location = link.href
+      }
+    }
+  
+    if (shouldFollowLink(event, link)) {
+      var attrs = { props: eventAttrs.props, callback: followLink }
+      if (revenue) {
+        attrs.revenue = eventAttrs.revenue
+      }
+
+      plausible(eventAttrs.name, attrs)
+      setTimeout(followLink, 5000)
+      event.preventDefault()
+    } else {
+      var attrs = { props: eventAttrs.props }
+      if (revenue) {
+        attrs.revenue = eventAttrs.revenue
+      }
+      plausible(eventAttrs.name, attrs)
+    }
+  }
+  
+  document.addEventListener('click', handleLinkClickEvent)
+  document.addEventListener('auxclick', handleLinkClickEvent)
+  
+if (outbound_links) {
+
+  function isOutboundLink(link) {
+    return link && link.href && link.host && link.host !== location.host
+  }
+}
+  
+if (file_downloads) {
+  var defaultFileTypes = ['pdf', 'xlsx', 'docx', 'txt', 'rtf', 'csv', 'exe', 'key', 'pps', 'ppt', 'pptx', '7z', 'pkg', 'rar', 'gz', 'zip', 'avi', 'mov', 'mp4', 'mpeg', 'wmv', 'midi', 'mp3', 'wav', 'wma', 'dmg']
+  var fileTypesAttr = scriptEl.getAttribute('file-types')
+  var addFileTypesAttr = scriptEl.getAttribute('add-file-types')
+  var fileTypesToTrack = (fileTypesAttr && fileTypesAttr.split(",")) || (addFileTypesAttr && addFileTypesAttr.split(",").concat(defaultFileTypes)) || defaultFileTypes;
+  
+  function isDownloadToTrack(url) {
+    if (!url) { return false }
+    
+    var fileType = url.split('.').pop();
+    return fileTypesToTrack.some(function (fileTypeToTrack) {
+      return fileTypeToTrack === fileType
+    })
+  }
+}
+  
+if (tagged_events)
+  // Finds event attributes by iterating over the given element's (or its
+  // parent's) classList. Returns an object with `name` and `props` keys.
+  function getTaggedEventAttributes(htmlElement) {
+    var taggedElement = isTagged(htmlElement) ? htmlElement : htmlElement && htmlElement.parentNode
+    var eventAttrs = { name: null, props: {} }
+    if (revenue) {
+      eventAttrs.revenue = {}
+    }
+  
+    var classList = taggedElement && taggedElement.classList
+    if (!classList) { return eventAttrs }
+  
+    for (var i = 0; i < classList.length; i++) {
+      var className = classList.item(i)
+  
+      var matchList = className.match(/plausible-event-(.+)(=|--)(.+)/)
+      if (matchList) {
+        var key = matchList[1]
+        var value = matchList[3].replace(/\+/g, ' ')
+  
+        if (key.toLowerCase() == 'name') {
+          eventAttrs.name = value
+        } else {
+          eventAttrs.props[key] = value
+        }
+      }
+  
+      if (revenue) {
+        var revenueMatchList = className.match(/plausible-revenue-(.+)(=|--)(.+)/)
+        if (revenueMatchList) {
+          var key = revenueMatchList[1]
+          var value = revenueMatchList[3]
+          eventAttrs.revenue[key] = value
+        }
+      }
+    }
+  
+    return eventAttrs
+  }
+  
+  function handleTaggedFormSubmitEvent(event) {
+    var form = event.target
+    var eventAttrs = getTaggedEventAttributes(form)
+    if (!eventAttrs.name) { return }
+  
+    event.preventDefault()
+    var formSubmitted = false
+  
+    function submitForm() {
+      if (!formSubmitted) {
+        formSubmitted = true
+        form.submit()
+      }
+    }
+  
+    setTimeout(submitForm, 5000)
+  
+    var attrs = { props: eventAttrs.props, callback: submitForm }
+    if (revenue) {
+      attrs.revenue = eventAttrs.revenue
+    }
+    plausible(eventAttrs.name, attrs)
+  }
+  
+  function isForm(element) {
+    return element && element.tagName && element.tagName.toLowerCase() === 'form'
+  }
+  
+  var PARENTS_TO_SEARCH_LIMIT = 3
+  
+  function handleTaggedElementClickEvent(event) {
+    if (event.type === 'auxclick' && event.button !== MIDDLE_MOUSE_BUTTON) { return }
+  
+    var clicked = event.target
+  
+    var clickedLink
+    var taggedElement
+    // Iterate over parents to find the tagged element. Also search for
+    // a link element to call for different tracking behavior if found.
+    for (var i = 0; i <= PARENTS_TO_SEARCH_LIMIT; i++) {
+      if (!clicked) { break }
+  
+      // Clicks inside forms are not tracked. Only form submits are.
+      if (isForm(clicked)) { return }
+      if (isLink(clicked)) { clickedLink = clicked }
+      if (isTagged(clicked)) { taggedElement = clicked }
+      clicked = clicked.parentNode
+    }
+  
+    if (taggedElement) {
+      var eventAttrs = getTaggedEventAttributes(taggedElement)
+  
+      if (clickedLink) {
+        // if the clicked tagged element is a link, we attach the `url` property
+        // automatically for user convenience
+        eventAttrs.props.url = clickedLink.href
+        sendLinkClickEvent(event, clickedLink, eventAttrs)
+      } else {
+        var attrs = {}
+        attrs.props = eventAttrs.props
+        if (revenue) {
+          attrs.revenue = eventAttrs.revenue
+        }
+        plausible(eventAttrs.name, attrs)
+      }
+    }
+  }
+  
+  function isTagged(element) {
+    var classList = element && element.classList
+    if (classList) {
+      for (var i = 0; i < classList.length; i++) {
+        if (classList.item(i).match(/plausible-event-name(=|--)(.+)/)) { return true }
+      }
+    }
+    return false
+  }
+  
+  function isElementOrParentTagged(element, parentsChecked) {
+    if (!element || parentsChecked > PARENTS_TO_SEARCH_LIMIT) { return false }
+    if (isTagged(element)) { return true }
+    return isElementOrParentTagged(element.parentNode, parentsChecked + 1)
+  }
+  
+  if (outbound_links || file_downloads || tagged_events) {
+  document.addEventListener('submit', handleTaggedFormSubmitEvent)
+  document.addEventListener('click', handleTaggedElementClickEvent)
+  document.addEventListener('auxclick', handleTaggedElementClickEvent)
+  }
 })();

@@ -1,22 +1,27 @@
-const { expect, Page } = require("@playwright/test");
+const Playwright = require('@playwright/test')
+const { expect } = Playwright
 
 // Mocks an HTTP request call with the given path. Returns a Promise that resolves to the request
 // data. If the request is not made, resolves to null after 3 seconds.
 const mockRequest = function (page, path) {
-  return new Promise((resolve, _reject) => {
+  return new Promise((resolve) => {
     const requestTimeoutTimer = setTimeout(() => resolve(null), 3000)
 
     page.route(path, (route, request) => {
       clearTimeout(requestTimeoutTimer)
       resolve(request)
-      return route.fulfill({ status: 202, contentType: 'text/plain', body: 'ok' })
+      return route.fulfill({
+        status: 202,
+        contentType: 'text/plain',
+        body: 'ok'
+      })
     })
   })
 }
 
 exports.mockRequest = mockRequest
 
-exports.metaKey = function() {
+exports.metaKey = function () {
   if (process.platform === 'darwin') {
     return 'Meta'
   } else {
@@ -26,10 +31,20 @@ exports.metaKey = function() {
 
 // Mocks a specified number of HTTP requests with given path. Returns a promise that resolves to a
 // list of requests as soon as the specified number of requests is made, or 3 seconds has passed.
-const mockManyRequests = function({ page, path, numberOfRequests, responseDelay, shouldIgnoreRequest, mockRequestTimeout = 3000 }) {
-  return new Promise((resolve, _reject) => {
+const mockManyRequests = function ({
+  page,
+  path,
+  numberOfRequests,
+  responseDelay,
+  shouldIgnoreRequest,
+  mockRequestTimeout = 3000
+}) {
+  return new Promise((resolve) => {
     let requestList = []
-    const requestTimeoutTimer = setTimeout(() => resolve(requestList), mockRequestTimeout)
+    const requestTimeoutTimer = setTimeout(
+      () => resolve(requestList),
+      mockRequestTimeout
+    )
 
     page.route(path, async (route, request) => {
       const postData = request.postDataJSON()
@@ -43,7 +58,11 @@ const mockManyRequests = function({ page, path, numberOfRequests, responseDelay,
         clearTimeout(requestTimeoutTimer)
         resolve(requestList)
       }
-      return route.fulfill({ status: 202, contentType: 'text/plain', body: 'ok' })
+      return route.fulfill({
+        status: 202,
+        contentType: 'text/plain',
+        body: 'ok'
+      })
     })
   })
 }
@@ -55,7 +74,7 @@ exports.mockManyRequests = mockManyRequests
  * requests that should or should not have been made after doing a page
  * action (e.g. navigating to the page, clicking a page element, etc).
  *
- * @param {Page} page - The Playwright Page object.
+ * @param {Playwright.Page} page - The Playwright Page object.
  * @param {Object} args - The object configuring the action and related expectations.
  * @param {Function} args.action - A function that returns a promise. The function is called
  *  without arguments, and is `await`ed. This is the action that should or should not trigger
@@ -76,18 +95,25 @@ exports.mockManyRequests = mockManyRequests
  * @param {number} [args.responseDelay] - When provided, delays the response from the Plausible
  *  API by the given number of milliseconds.
  */
-exports.expectPlausibleInAction = async function (page, {
-  action,
-  expectedRequests = [],
-  refutedRequests = [],
-  awaitedRequestCount,
-  expectedRequestCount,
-  responseDelay,
-  shouldIgnoreRequest,
-  mockRequestTimeout = 3000
-}) {
-  const requestsToExpect = expectedRequestCount ? expectedRequestCount : expectedRequests.length
-  const requestsToAwait = awaitedRequestCount ? awaitedRequestCount : requestsToExpect + refutedRequests.length
+exports.expectPlausibleInAction = async function (
+  page,
+  {
+    action,
+    expectedRequests = [],
+    refutedRequests = [],
+    awaitedRequestCount,
+    expectedRequestCount,
+    responseDelay,
+    shouldIgnoreRequest,
+    mockRequestTimeout = 3000
+  }
+) {
+  const requestsToExpect = expectedRequestCount
+    ? expectedRequestCount
+    : expectedRequests.length
+  const requestsToAwait = awaitedRequestCount
+    ? awaitedRequestCount
+    : requestsToExpect + refutedRequests.length
 
   const plausibleRequestMockList = mockManyRequests({
     page,
@@ -107,7 +133,9 @@ exports.expectPlausibleInAction = async function (page, {
       return includesSubset(requestBody, bodySubset)
     })
 
-    if (!wasFound) {expectedButNotFoundBodySubsets.push(bodySubset)}
+    if (!wasFound) {
+      expectedButNotFoundBodySubsets.push(bodySubset)
+    }
   })
 
   const refutedButFoundRequestBodies = []
@@ -117,62 +145,79 @@ exports.expectPlausibleInAction = async function (page, {
       return includesSubset(requestBody, bodySubset)
     })
 
-    if (found) {refutedButFoundRequestBodies.push(found)}
+    if (found) {
+      refutedButFoundRequestBodies.push(found)
+    }
   })
 
   const expectedBodySubsetsErrorMessage = `The following body subsets were not found from the requests that were made:\n\n${JSON.stringify(expectedButNotFoundBodySubsets, null, 4)}\n\nReceived requests with the following bodies:\n\n${JSON.stringify(requestBodies, null, 4)}`
-  expect(expectedButNotFoundBodySubsets, expectedBodySubsetsErrorMessage).toHaveLength(0)
+  // eslint-disable-next-line playwright/no-standalone-expect
+  expect(
+    expectedButNotFoundBodySubsets,
+    expectedBodySubsetsErrorMessage
+  ).toHaveLength(0)
 
   const refutedBodySubsetsErrorMessage = `The following requests were made, but were not expected:\n\n${JSON.stringify(refutedButFoundRequestBodies, null, 4)}`
-  expect(refutedButFoundRequestBodies, refutedBodySubsetsErrorMessage).toHaveLength(0)
+  // eslint-disable-next-line playwright/no-standalone-expect
+  expect(
+    refutedButFoundRequestBodies,
+    refutedBodySubsetsErrorMessage
+  ).toHaveLength(0)
 
+  // eslint-disable-next-line playwright/no-standalone-expect
   expect(requestBodies.length).toBe(requestsToExpect)
 
   return requestBodies
 }
 
-exports.ignoreEngagementRequests = function(requestPostData) {
+exports.ignoreEngagementRequests = function (requestPostData) {
   return requestPostData.n === 'engagement'
 }
 
-exports.ignorePageleaveRequests = function(requestPostData) {
+exports.ignorePageleaveRequests = function (requestPostData) {
   return requestPostData.n === 'pageleave'
 }
 
 async function toggleTabVisibility(page, hide) {
   await page.evaluate((hide) => {
-    Object.defineProperty(document, 'visibilityState', { value: hide ? 'hidden' : 'visible', writable: true })
+    Object.defineProperty(document, 'visibilityState', {
+      value: hide ? 'hidden' : 'visible',
+      writable: true
+    })
     Object.defineProperty(document, 'hidden', { value: hide, writable: true })
     document.dispatchEvent(new Event('visibilitychange'))
   }, hide)
 }
 
-exports.hideCurrentTab = async function(page) {
+exports.hideCurrentTab = async function (page) {
   return toggleTabVisibility(page, true)
 }
 
-exports.showCurrentTab = async function(page) {
+exports.showCurrentTab = async function (page) {
   return toggleTabVisibility(page, false)
 }
 
 async function setFocus(page, focus) {
   await page.evaluate((focus) => {
-    Object.defineProperty(document, 'hasFocus', { value: () => focus, writable: true })
+    Object.defineProperty(document, 'hasFocus', {
+      value: () => focus,
+      writable: true
+    })
 
     const eventName = focus ? 'focus' : 'blur'
     window.dispatchEvent(new Event(eventName))
   }, focus)
 }
 
-exports.focus = async function(page) {
+exports.focus = async function (page) {
   return setFocus(page, true)
 }
 
-exports.blur = async function(page) {
+exports.blur = async function (page) {
   return setFocus(page, false)
 }
 
-exports.hideAndShowCurrentTab = async function(page, options = {}) {
+exports.hideAndShowCurrentTab = async function (page, options = {}) {
   await exports.hideCurrentTab(page)
   if (options.delay > 0) {
     await delay(options.delay)
@@ -180,7 +225,7 @@ exports.hideAndShowCurrentTab = async function(page, options = {}) {
   await exports.showCurrentTab(page)
 }
 
-exports.blurAndFocusPage = async function(page, options = {}) {
+exports.blurAndFocusPage = async function (page, options = {}) {
   await exports.blur(page)
   if (options.delay > 0) {
     await delay(options.delay)
@@ -191,7 +236,10 @@ exports.blurAndFocusPage = async function(page, options = {}) {
 function includesSubset(body, subset) {
   return Object.keys(subset).every((key) => {
     if (typeof subset[key] === 'object') {
-      return typeof body[key] === 'object' && areFlatObjectsEqual(body[key], subset[key])
+      return (
+        typeof body[key] === 'object' &&
+        areFlatObjectsEqual(body[key], subset[key])
+      )
     } else {
       return body[key] === subset[key]
     }
@@ -204,11 +252,11 @@ function areFlatObjectsEqual(obj1, obj2) {
   const keys1 = Object.keys(obj1)
   const keys2 = Object.keys(obj2)
 
-  if (keys1.length !== keys2.length) return false;
+  if (keys1.length !== keys2.length) return false
 
-  return keys1.every(key => obj2[key] === obj1[key])
+  return keys1.every((key) => obj2[key] === obj1[key])
 }
 
 function delay(ms) {
-  return new Promise(resolve => setTimeout(resolve, ms))
+  return new Promise((resolve) => setTimeout(resolve, ms))
 }
