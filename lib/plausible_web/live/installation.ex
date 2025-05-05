@@ -3,6 +3,295 @@ defmodule PlausibleWeb.Live.Installation do
   User assistance module around Plausible installation instructions/onboarding
   """
   use PlausibleWeb, :live_view
+
+  def mount(
+        params,
+        session,
+        socket
+      ) do
+    {:ok, assign(socket, params: params)}
+  end
+
+  def render(assigns) do
+    if FunWithFlags.enabled?(:scriptv2, for: @params["domain"]) do
+      ~H"""
+      {live_render(@socket, PlausibleWeb.Live.NewInstallation, id: "installation", session: @params)}
+      """
+    else
+      ~H"""
+      {live_render(@socket, PlausibleWeb.Live.LegacyInstallation,
+        id: "legacy_installation",
+        session: @params
+      )}
+      """
+    end
+  end
+end
+
+defmodule PlausibleWeb.Live.NewInstallation do
+  use PlausibleWeb, :live_view
+
+  def mount(
+        :not_mounted_at_router,
+        %{"domain" => domain} = params,
+        socket
+      ) do
+    site =
+      Plausible.Sites.get_for_user!(socket.assigns.current_user, domain, [
+        :owner,
+        :admin,
+        :editor,
+        :super_admin,
+        :viewer
+      ])
+
+    {:ok,
+     assign(socket,
+       site: site,
+       installation_type: "manual",
+       initial_installation_type: "manual",
+       flow: "provisioning",
+       script_config: %{},
+       script_config_form: to_form(%{})
+     )}
+  end
+
+  def render(assigns) do
+    ~H"""
+    <div>
+      <.focus_box>
+        <:title :if={@installation_type == "manual"}>
+          Manual installation
+        </:title>
+
+        <:subtitle :if={@installation_type == "manual"}>
+          Paste this snippet into the <code>&lt;head&gt;</code>
+          section of your site. See our
+          <.styled_link href="https://plausible.io/docs/integration-guides" new_tab={true}>
+            installation guides.
+          </.styled_link>
+          Once done, click the button below to verify your installation.
+        </:subtitle>
+
+        <div :if={@installation_type in ["manual", "GTM"]}>
+          <.snippet_form
+            installation_type={@installation_type}
+            script_config={@script_config}
+            script_config_form={@script_config_form}
+            domain={@site.domain}
+          />
+        </div>
+
+        <.button_link
+          :if={not is_nil(@installation_type)}
+          href={"/#{URI.encode_www_form(@site.domain)}/verification"}
+          type="submit"
+          class="w-full mt-8"
+        >
+          <%= if @flow == PlausibleWeb.Flows.domain_change() do %>
+            I understand, I'll update my website
+          <% else %>
+            <%= if @flow == PlausibleWeb.Flows.review() do %>
+              Verify your installation
+            <% else %>
+              Start collecting data
+            <% end %>
+          <% end %>
+        </.button_link>
+
+        <:footer :if={@initial_installation_type == "WordPress" and @installation_type == "manual"}>
+          <.styled_link href={} phx-click="switch-installation-type" phx-value-method="WordPress">
+            Click here
+          </.styled_link>
+          if you prefer WordPress installation method.
+        </:footer>
+
+        <:footer :if={
+          (@initial_installation_type == "GTM" and @installation_type == "manual") or
+            (@initial_installation_type == "manual" and @installation_type == "manual")
+        }>
+          <.styled_link href={} phx-click="switch-installation-type" phx-value-method="GTM">
+            Click here
+          </.styled_link>
+          if you prefer Google Tag Manager installation method.
+        </:footer>
+
+        <:footer :if={not is_nil(@installation_type) and @installation_type != "manual"}>
+          <.styled_link href={} phx-click="switch-installation-type" phx-value-method="manual">
+            Click here
+          </.styled_link>
+          if you prefer manual installation method.
+        </:footer>
+      </.focus_box>
+    </div>
+    """
+  end
+
+  defp snippet_form(assigns) do
+    ~H"""
+    <.form for={@script_config_form} id="snippet-form">
+      <div class="relative">
+        <textarea
+          id="snippet"
+          class="w-full border-1 border-gray-300 rounded-md p-4 text-sm text-gray-700 dark:border-gray-500 dark:bg-gray-900 dark:text-gray-300"
+          rows="5"
+          readonly
+        ><%= render_snippet(@installation_type, @domain) %></textarea>
+
+        <a
+          onclick="var input = document.getElementById('snippet'); input.focus(); input.select(); document.execCommand('copy'); event.stopPropagation();"
+          href="javascript:void(0)"
+          class="absolute flex items-center text-xs font-medium text-indigo-600 no-underline hover:underline bottom-2 right-4 p-2 bg-white dark:bg-gray-900"
+        >
+          <Heroicons.document_duplicate class="pr-1 text-indigo-600 dark:text-indigo-500 w-5 h-5" />
+          <span>
+            COPY
+          </span>
+        </a>
+      </div>
+
+      <.h2 class="mt-8 text-sm font-medium">Enable optional measurements:</.h2>
+      <.script_extension_control
+        field={@script_config_form[:outbound_links]}
+        label="Outbound links"
+        tooltip="Automatically track clicks on external links. These count towards your billable pageviews."
+        learn_more="https://plausible.io/docs/outbound-link-click-tracking"
+      />
+      <.script_extension_control
+        field={@script_config_form[:form_submissions]}
+        label="Form submissions"
+        tooltip="Automatically track form submissions. These count towards your billable pageviews."
+        learn_more="https://plausible.io/docs/form-submission"
+      />
+      <.script_extension_control
+        field={@script_config_form[:file_downloads]}
+        label="File downloads"
+        tooltip="Automatically track file downloads. These count towards your billable pageviews."
+        learn_more="https://plausible.io/docs/file-downloads-tracking"
+      />
+
+      <.h2 class="mt-8 text-sm font-medium">Advanced options:</.h2>
+
+      <.advanced_option
+        label="Custom events"
+        tooltip="Tag site elements like buttons, links and forms to track user activity. These count towards your billable pageviews. Additional action required."
+        learn_more="https://plausible.io/docs/custom-event-goals"
+      />
+      <.advanced_option
+        label="404 error pages"
+        tooltip="Find 404 error pages on your site. These count towards your billable pageviews. Additional action required."
+        learn_more="https://plausible.io/docs/error-pages-tracking-404"
+      />
+      <.advanced_option
+        label="Hashed page paths"
+        tooltip="Automatically track page paths that use a # in the URL."
+        learn_more="https://plausible.io/docs/hash-based-routing"
+      />
+      <.advanced_option
+        label="Custom properties"
+        tooltip="Attach custom properties (also known as custom dimensions) to pageviews or custom events to create custom metrics. Additional action required."
+        learn_more="https://plausible.io/docs/custom-props/introduction"
+      />
+      <.advanced_option
+        label="Ecommerce revenue"
+        tooltip="Assign monetary values to purchases and track revenue attribution. Additional action required."
+        learn_more="https://plausible.io/docs/ecommerce-revenue-tracking"
+      />
+    </.form>
+    """
+  end
+
+  def handle_event("update-script-config", params, socket) do
+    {:noreply, socket}
+  end
+
+  defp render_snippet("manual", domain) do
+    ~s|<script defer src="#{tracker_url(domain)}"></script>\n<script>window.plausible = window.plausible \|\| function() { (window.plausible.q = window.plausible.q \|\| []).push(arguments) }</script>|
+  end
+
+  defp render_snippet("GTM", domain) do
+    """
+    <script>
+    var script = document.createElement('script');
+    script.defer = true;
+    script.dataset.domain = "#{domain}";
+    script.dataset.api = "https://plausible.io/api/event";
+    script.src = "#{tracker_url(domain)}";
+    document.getElementsByTagName('head')[0].appendChild(script);
+    </script>
+    """
+  end
+
+  defp tracker_url(domain) do
+    "https://plausible.io/js/script-#{domain}.js"
+  end
+
+  defp advanced_option(assigns) do
+    ~H"""
+    <ul class="mt-2 p-1 text-sm">
+      <li class="flex items-center">
+        {@label}
+        <div class="ml-2 collapse md:visible">
+          <.tooltip sticky?={false}>
+            <:tooltip_content>
+              {@tooltip}
+              <br /><br />Click to learn more.
+            </:tooltip_content>
+            <a href={@learn_more} target="_blank" rel="noopener noreferrer">
+              <Heroicons.information_circle class="text-indigo-700 dark:text-gray-500 w-5 h-5 hover:stroke-2" />
+            </a>
+          </.tooltip>
+        </div>
+        <div class="ml-2 visible md:invisible">
+          <a href={@learn_more} target="_blank" rel="noopener noreferrer">
+            <Heroicons.information_circle class="text-indigo-700 dark:text-gray-500 w-5 h-5 hover:stroke-2" />
+          </a>
+        </div>
+      </li>
+    </ul>
+    """
+  end
+
+  defp script_extension_control(assigns) do
+    ~H"""
+    <div class="mt-2 p-1 text-sm">
+      <div class="flex items-center">
+        <input
+          type="checkbox"
+          id={@field.id}
+          name={@field.name}
+          class="block h-5 w-5 rounded dark:bg-gray-700 border-gray-300 text-indigo-600 focus:ring-indigo-600 mr-2"
+        />
+        <label for={@field.id}>
+          {@label}
+        </label>
+        <div class="ml-2 collapse md:visible">
+          <.tooltip sticky?={false}>
+            <:tooltip_content>
+              {@tooltip}
+              <br /><br />Click to learn more.
+            </:tooltip_content>
+            <a href={@learn_more} target="_blank" rel="noopener noreferrer">
+              <Heroicons.information_circle class="text-indigo-700 dark:text-gray-500 w-5 h-5 hover:stroke-2" />
+            </a>
+          </.tooltip>
+        </div>
+        <div class="ml-2 visible md:invisible">
+          <a href={@learn_more} target="_blank" rel="noopener noreferrer">
+            <Heroicons.information_circle class="text-indigo-700 dark:text-gray-500 w-5 h-5 hover:stroke-2" />
+          </a>
+        </div>
+      </div>
+    </div>
+    """
+  end
+end
+
+defmodule PlausibleWeb.Live.LegacyInstallation do
+  @moduledoc """
+  User assistance module around Plausible installation instructions/onboarding
+  """
+  use PlausibleWeb, :live_view
   alias Plausible.Verification.{Checks, State}
 
   @script_extension_params [
@@ -27,10 +316,12 @@ defmodule PlausibleWeb.Live.Installation do
   def script_extension_params, do: @script_extension_params
 
   def mount(
+        :not_mounted_at_router,
         %{"domain" => domain} = params,
-        _session,
         socket
       ) do
+    flow = params["flow"]
+
     site =
       Plausible.Sites.get_for_user!(socket.assigns.current_user, domain, [
         :owner,
@@ -40,7 +331,6 @@ defmodule PlausibleWeb.Live.Installation do
         :viewer
       ])
 
-    flow = params["flow"]
     meta = site.installation_meta || %Plausible.Site.InstallationMeta{}
 
     script_config =
@@ -52,7 +342,7 @@ defmodule PlausibleWeb.Live.Installation do
     installation_type = get_installation_type(flow, meta, params)
 
     if connected?(socket) and is_nil(installation_type) do
-      Checks.run("https://#{domain}", domain,
+      Checks.run("https://#{site.domain}", site.domain,
         checks: [
           Checks.FetchBody,
           Checks.ScanBody
@@ -72,7 +362,7 @@ defmodule PlausibleWeb.Live.Installation do
        flow: flow,
        installation_type: installation_type,
        initial_installation_type: installation_type,
-       domain: domain,
+       domain: site.domain,
        script_config: script_config
      )}
   end
@@ -417,11 +707,11 @@ defmodule PlausibleWeb.Live.Installation do
     {:noreply, socket}
   end
 
-  def handle_params(params, _uri, socket) do
-    socket = do_handle_params(socket, params)
-    persist_installation_meta(socket)
-    {:noreply, socket}
-  end
+  # def handle_params(params, _uri, socket) do
+  #   socket = do_handle_params(socket, params)
+  #   persist_installation_meta(socket)
+  #   {:noreply, socket}
+  # end
 
   defp do_handle_params(socket, params) when is_map(params) do
     Enum.reduce(params, socket, &param_reducer/2)
