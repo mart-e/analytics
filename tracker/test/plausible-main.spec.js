@@ -22,7 +22,7 @@ const DEFAULT_CONFIG = {
 
 async function openPage(page, config, options = {}) {
   const configJson = JSON.stringify({ ...DEFAULT_CONFIG, ...config })
-  let path = `/plausible-main.html?script_config=${configJson}`
+  let path = `/plausible-main.html?script_config=${encodeURIComponent(configJson)}`
   if (options.beforeScriptLoaded) {
     path += `&before_script_loaded=${options.beforeScriptLoaded}`
   }
