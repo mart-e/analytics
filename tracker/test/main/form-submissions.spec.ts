@@ -240,6 +240,24 @@ test.describe('trackFormSubmissions is enabled', () => {
     })
   })
 
+  /* Both `chromium` and `webkit` test runs show the form submission in Pagewright UI network tab,
+   * but not so for `firefox` runs.
+   * Test server logs from the time of the test don't show the form submission either.
+   * 
+   * However, when submitting the form manually on macOS Firefox 138.0.4 (aarch64) at the URL 
+   * http://localhost:3000/firefox-macos-keepalive-debug.html,
+   * the form submissions requests consistently appear in server logs.
+   * This indicates something going wrong when Firefox is driven by Playwright, and not a bug with the tracker.
+   */
+  test('tracks forms that use GET method (issue when driving Firefox with Playwright)', async ({
+    page,
+  }) => {
+    await page.goto(`/firefox-macos-keepalive-debug.html`)
+    await page.fill('input[type="text"]', 'Any Name')
+    await page.click('input[type="submit"]')
+    await page.waitForTimeout(5000) // wait around to inspect network requests
+  })
+
   test('limitation: tracks _all_ forms on the same page, but _records them indistinguishably_', async ({
     page
   }, { testId }) => {

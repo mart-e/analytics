@@ -15,7 +15,7 @@ const VARIANTS = variantsFile.legacyVariants.concat(variantsFile.manualVariants)
 export const LOCAL_SERVER_ADDR = `http://localhost:${LOCAL_SERVER_PORT}`
 
 export function runLocalFileServer() {
-  app.use(express.static(FIXTURES_PATH));
+  app.use(express.static(FIXTURES_PATH, {setHeaders: (res, absoluteFilePath) => {console.log(`Serving ${absoluteFilePath.replace(FIXTURES_PATH, '')}`);}}));
   app.get('/dynamic/*', (req, res) => {
     const dynamicPath = req.params[0]; // Access the value of *
     res.status(200).type('html').send(
@@ -39,6 +39,11 @@ export function runLocalFileServer() {
     );
     return;
   });
+
+  app.use('/api/event', express.json({type: '*/*'}), (req, res) => {
+    console.log('Received event:', req.body);
+    res.status(200).json({ status: 'ok' });
+  })
 
   app.get('/tracker/js/:name', (req, res) => {
     const name = req.params.name
