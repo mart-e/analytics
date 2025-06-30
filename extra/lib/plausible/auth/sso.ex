@@ -63,16 +63,58 @@ defmodule Plausible.Auth.SSO do
     )
   end
 
-  @spec update_integration(SSO.Integration.t(), map()) ::
+  @spec update_integration(SSO.Integration.t(), map(), Keyword.t()) ::
           {:ok, SSO.Integration.t()} | {:error, Ecto.Changeset.t()}
-  def update_integration(integration, params) do
+  def update_integration(integration, params, opts \\ []) do
+    skip_online? = Keyword.get(opts, :skip_online?, true)
     changeset = SSO.Integration.update_changeset(integration, params)
 
+    Repo.transaction(fn ->
+      with {:ok, integration} <- update_integration(changeset),
+           :ok <- run_online_integration_checks(integration, skip_online?) do
+        integration
+      else
+        {:error, error} ->
+          Repo.rollback(error)
+      end
+    end)
+  end
+
+  defp update_integration(changeset) do
     case Repo.update(changeset) do
       {:ok, integration} -> {:ok, integration}
       {:error, changeset} -> {:error, changeset.changes.config}
     end
   end
+
+  defp run_online_integration_checks(%{config: %SSO.SAMLConfig{} = config} = integration, false) do
+    # Trying to detect a common mistake of pasting Entity ID (metadata XML endpoint, usually),
+    # into Sign-in/ACS URL field).
+    callback = fn {:data, data}, {req, resp} ->
+      resp = Map.update!(resp, :private, &Map.put(&1, :resp_start, String.trim(data)))
+      {:halt, {req, resp}}
+    end
+
+    case Req.get(config.idp_signin_url, into: callback) do
+      {:ok, %{private: %{resp_start: "<?xml version=" <> _}}} ->
+        changeset =
+          integration.config
+          |> Ecto.Changeset.change()
+          |> Ecto.Changeset.force_change(:idp_signin_url, integration.config.idp_signin_url)
+          |> Ecto.Changeset.add_error(
+            :idp_signin_url,
+            "the provided URL returns invalid content",
+            validation: :url
+          )
+
+        {:error, %{changeset | action: :update}}
+
+      _ ->
+        :ok
+    end
+  end
+
+  defp run_online_integration_checks(_, _), do: :ok
 
   @spec provision_user(SSO.Identity.t()) ::
           {:ok, :standard | :sso | :integration, Teams.Team.t(), Auth.User.t()}

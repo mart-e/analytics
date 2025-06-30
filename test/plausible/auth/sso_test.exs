@@ -191,6 +191,40 @@ defmodule Plausible.Auth.SSOTest do
                    opts[:validation]
                  end)
       end
+
+      test "returns error on signin URL returning XML" do
+        bypass = Bypass.open()
+
+        Bypass.expect(bypass, "GET", "/wrong-signin-url", fn conn ->
+          conn
+          |> Plug.Conn.put_resp_header("content-type", "text/html")
+          |> Plug.Conn.resp(200, """
+            <?xml version="1.0"?>
+            <some-data></some-data>
+          """)
+        end)
+
+        team = new_site().team
+        integration = SSO.initiate_saml_integration(team)
+
+        assert {:error, changeset} =
+                 SSO.update_integration(
+                   integration,
+                   %{
+                     idp_signin_url: "http://localhost:#{bypass.port}/wrong-signin-url",
+                     idp_entity_id: "some-entity",
+                     idp_cert_pem: @cert_pem
+                   },
+                   skip_online?: false
+                 )
+
+        assert %{
+                 idp_signin_url: [:xml_content]
+               } =
+                 Ecto.Changeset.traverse_errors(changeset, fn {_msg, opts} ->
+                   opts[:validation]
+                 end)
+      end
     end
 
     describe "provision_user/1" do
