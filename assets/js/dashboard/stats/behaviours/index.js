@@ -3,7 +3,8 @@ import * as storage from '../../util/storage'
 import ImportedQueryUnsupportedWarning from '../imported-query-unsupported-warning'
 import GoalConversions, {
   specialTitleWhenGoalFilter,
-  SPECIAL_GOALS
+  SPECIAL_GOALS,
+  FORM_SUBMISSION_EVENT_NAME
 } from './goal-conversions'
 import Properties from './props'
 import { FeatureSetupNotice } from '../../components/notice'
@@ -64,9 +65,12 @@ export default function Behaviours({ importedDataInView }) {
     const isSpecialGoal = Object.keys(SPECIAL_GOALS).includes(goalName)
     const isPageviewGoal = goalName.startsWith('Visit ')
 
+    // goal conversions report is replaced without switching the tab with a special breakdown report when clicking drilldown links for these goals
+    const shouldStayOnConversions =
+      isSpecialGoal || isPageviewGoal || goalName === FORM_SUBMISSION_EVENT_NAME
+
     if (
-      !isSpecialGoal &&
-      !isPageviewGoal &&
+      !shouldStayOnConversions &&
       enabledModes.includes(PROPS) &&
       site.hasProps
     ) {

@@ -12,7 +12,7 @@ import { useSiteContext } from '../../site-context'
 import { entryPagesRoute, exitPagesRoute, topPagesRoute } from '../../router'
 import { TabButton, TabWrapper } from '../../components/tabs'
 
-function EntryPages({ afterFetchData }) {
+function EntryPagesReport({ afterFetchData }) {
   const { query } = useQueryContext()
   const site = useSiteContext()
   function fetchData() {
@@ -58,7 +58,7 @@ function EntryPages({ afterFetchData }) {
   )
 }
 
-function ExitPages({ afterFetchData }) {
+function ExitPagesReport({ afterFetchData }) {
   const site = useSiteContext()
   const { query } = useQueryContext()
   function fetchData() {
@@ -104,7 +104,7 @@ function ExitPages({ afterFetchData }) {
   )
 }
 
-function TopPages({ afterFetchData }) {
+export function TopPagesReport({ afterFetchData }) {
   const { query } = useQueryContext()
   const site = useSiteContext()
   function fetchData() {
@@ -177,12 +177,12 @@ export default function Pages() {
   function renderContent() {
     switch (mode) {
       case 'entry-pages':
-        return <EntryPages afterFetchData={afterFetchData} />
+        return <EntryPagesReport afterFetchData={afterFetchData} />
       case 'exit-pages':
-        return <ExitPages afterFetchData={afterFetchData} />
+        return <ExitPagesReport afterFetchData={afterFetchData} />
       case 'pages':
       default:
-        return <TopPages afterFetchData={afterFetchData} />
+        return <TopPagesReport afterFetchData={afterFetchData} />
     }
   }
 

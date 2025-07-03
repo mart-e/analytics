@@ -4,44 +4,92 @@ import ListReport from '../reports/list'
 import * as metrics from '../reports/metrics'
 import * as url from '../../util/url'
 import * as api from '../../api'
-import {
-  EVENT_PROPS_PREFIX,
-  getGoalFilter,
-  FILTER_OPERATIONS
-} from '../../util/filters'
+import { EVENT_PROPS_PREFIX, FILTER_OPERATIONS } from '../../util/filters'
 import { useSiteContext } from '../../site-context'
 import { useQueryContext } from '../../query-context'
 import { customPropsRoute } from '../../router'
+import { matchBy } from '../../util/match-by'
+import { TopPagesReport } from '../pages'
+
+function getFilterInfoForPath(listItem) {
+  return {
+    prefix: EVENT_PROPS_PREFIX,
+    filter: [FILTER_OPERATIONS.is, `${EVENT_PROPS_PREFIX}path`, [listItem.name]]
+  }
+}
+
+function getFilterInfoForUrl(listItem) {
+  return {
+    prefix: EVENT_PROPS_PREFIX,
+    filter: [FILTER_OPERATIONS.is, `${EVENT_PROPS_PREFIX}url`, [listItem.name]]
+  }
+}
+
+export const FORM_SUBMISSION_EVENT_NAME = 'Form: Submission'
 
 export const SPECIAL_GOALS = {
   404: { title: '404 Pages', prop: 'path' },
-  'Outbound Link: Click': { title: 'Outbound Links', prop: 'url' },
-  'Cloaked Link: Click': { title: 'Cloaked Links', prop: 'url' },
-  'File Download': { title: 'File Downloads', prop: 'url' },
+  'Outbound Link: Click': {
+    title: 'Outbound Links',
+    prop: 'url',
+    getFilterInfo: getFilterInfoForUrl
+  },
+  'Cloaked Link: Click': {
+    title: 'Cloaked Links',
+    prop: 'url',
+    getFilterInfo: getFilterInfoForUrl
+  },
+  'File Download': {
+    title: 'File Downloads',
+    prop: 'url',
+    getFilterInfo: getFilterInfoForUrl
+  },
   'WP Search Queries': {
     title: 'WordPress Search Queries',
-    prop: 'search_query'
+    prop: 'search_query',
+    getFilterInfo: (listItem) => ({
+      prefix: EVENT_PROPS_PREFIX,
+      filter: [
+        FILTER_OPERATIONS.is,
+        `${EVENT_PROPS_PREFIX}search_query`,
+        [listItem.name]
+      ]
+    })
   },
-  'WP Form Completions': { title: 'WordPress Form Completions', prop: 'path' }
+  'WP Form Completions': {
+    title: 'WordPress Form Completions',
+    prop: 'path',
+    getFilterInfo: getFilterInfoForPath
+  }
 }
 
-function getSpecialGoal(query) {
-  const goalFilter = getGoalFilter(query)
-  if (!goalFilter) {
-    return null
+function getGoalIsSingleGoalFilter(query) {
+  const resolvedIsSingleGoalFilters = query.resolvedFilters.filter(
+    matchBy([FILTER_OPERATIONS.is, 'goal', [matchBy._]])
+  )
+
+  if (resolvedIsSingleGoalFilters.length === 1) {
+    return resolvedIsSingleGoalFilters[0]
   }
-  const [operation, _filterKey, clauses] = goalFilter
-  if (operation === FILTER_OPERATIONS.is && clauses.length == 1) {
-    return SPECIAL_GOALS[clauses[0]] || null
-  }
+
   return null
 }
 
 export function specialTitleWhenGoalFilter(query, defaultTitle) {
-  return getSpecialGoal(query)?.title || defaultTitle
+  const goalIsSingleGoalFilter = getGoalIsSingleGoalFilter(query)
+  if (goalIsSingleGoalFilter) {
+    const [_operation, _dimension, [goalName]] = goalIsSingleGoalFilter
+    if (goalName in SPECIAL_GOALS) {
+      return SPECIAL_GOALS[goalName].title
+    }
+    if (goalName === FORM_SUBMISSION_EVENT_NAME) {
+      return 'Form Submissions'
+    }
+  }
+  return defaultTitle
 }
 
-function SpecialPropBreakdown({ prop, afterFetchData }) {
+function SpecialPropBreakdown({ getFilterInfo, prop, afterFetchData }) {
   const site = useSiteContext()
   const { query } = useQueryContext()
 
@@ -49,18 +97,11 @@ function SpecialPropBreakdown({ prop, afterFetchData }) {
     return api.get(url.apiPath(site, `/custom-prop-values/${prop}`), query)
   }
 
-  function getExternalLinkUrlFactory() {
+  function getExternalLinkUrl(listItem) {
     if (prop === 'path') {
-      return (listItem) => url.externalLinkForPage(site.domain, listItem.name)
+      return url.externalLinkForPage(site.domain, listItem.name)
     } else {
-      return (listItem) => listItem.name
-    }
-  }
-
-  function getFilterInfo(listItem) {
-    return {
-      prefix: EVENT_PROPS_PREFIX,
-      filter: ['is', `${EVENT_PROPS_PREFIX}${prop}`, [listItem['name']]]
+      return listItem.name
     }
   }
 
@@ -90,7 +131,7 @@ function SpecialPropBreakdown({ prop, afterFetchData }) {
         params: { propKey: url.maybeEncodeRouteParam(prop) },
         search: (search) => search
       }}
-      getExternalLinkUrl={getExternalLinkUrlFactory()}
+      getExternalLinkUrl={getExternalLinkUrl}
       maybeHideDetails={true}
       color="bg-red-50"
       colMinWidth={90}
@@ -101,20 +142,28 @@ function SpecialPropBreakdown({ prop, afterFetchData }) {
 export default function GoalConversions({ afterFetchData, onGoalFilterClick }) {
   const { query } = useQueryContext()
 
-  const specialGoal = getSpecialGoal(query)
-  if (specialGoal) {
-    return (
-      <SpecialPropBreakdown
-        prop={specialGoal.prop}
-        afterFetchData={afterFetchData}
-      />
-    )
-  } else {
-    return (
-      <Conversions
-        onGoalFilterClick={onGoalFilterClick}
-        afterFetchData={afterFetchData}
-      />
-    )
+  const goalIsSingleGoalFilter = getGoalIsSingleGoalFilter(query)
+  if (goalIsSingleGoalFilter) {
+    const [_operation, _dimension, [goalName]] = goalIsSingleGoalFilter
+    if (goalName in SPECIAL_GOALS) {
+      const specialGoal = SPECIAL_GOALS[goalName]
+      return (
+        <SpecialPropBreakdown
+          getFilterInfo={specialGoal.getFilterInfo}
+          prop={specialGoal.prop}
+          afterFetchData={afterFetchData}
+        />
+      )
+    }
+    if (goalName === FORM_SUBMISSION_EVENT_NAME) {
+      return <TopPagesReport />
+    }
   }
+
+  return (
+    <Conversions
+      onGoalFilterClick={onGoalFilterClick}
+      afterFetchData={afterFetchData}
+    />
+  )
 }
