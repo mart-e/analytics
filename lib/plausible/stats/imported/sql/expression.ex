@@ -176,8 +176,12 @@ defmodule Plausible.Stats.Imported.SQL.Expression do
     })
   end
 
-  defp select_group_fields(q, "event:page", key, _query) do
-    select_merge_as(q, [i], %{key => i.page})
+  defp select_group_fields(q, "event:page", key, query) do
+    if query.debug_metadata.params["dimensions"] == ["event:props:path"] do
+      select_merge_as(q, [i], %{key => i.path})
+    else
+      select_merge_as(q, [i], %{key => i.page})
+    end
   end
 
   defp select_group_fields(q, dimension, key, _query)

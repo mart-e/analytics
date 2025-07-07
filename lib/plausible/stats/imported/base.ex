@@ -85,8 +85,18 @@ defmodule Plausible.Stats.Imported.Base do
       custom_prop_query?(query) ->
         do_decide_custom_prop_table(query)
 
+      was_a_custom_prop_query?(query) ->
+        ["imported_custom_events"]
+
       true ->
         do_decide_tables(query)
+    end
+  end
+
+  defp was_a_custom_prop_query?(query) do
+    case query.debug_metadata.params["dimensions"] do
+      ["event:props:path"] -> true
+      _ -> false
     end
   end
 
@@ -202,6 +212,6 @@ defmodule Plausible.Stats.Imported.Base do
     end
   end
 
-  def special_goals_for("event:props:url"), do: Imported.goals_with_url()
-  def special_goals_for("event:props:path"), do: Imported.goals_with_path()
+  defp special_goals_for("event:props:url"), do: Imported.goals_with_url()
+  defp special_goals_for("event:props:path"), do: Imported.goals_with_path()
 end

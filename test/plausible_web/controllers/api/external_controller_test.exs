@@ -1224,6 +1224,25 @@ defmodule PlausibleWeb.Api.ExternalControllerTest do
       assert pageview.utm_source == session.utm_source
     end
 
+    test "decodes pathname and event.props.path the same way", %{conn: conn, site: site} do
+      params = %{
+        name: "404",
+        url: "https://example.com/%23hi",
+        domain: site.domain,
+        props: %{"path" => "/%23hi"}
+      }
+
+      conn = post(conn, "/api/event", params)
+
+      assert conn.status == 202
+
+      event = get_event(site)
+
+      assert event.pathname == "/#hi"
+      assert Map.get(event, :"meta.key") == ["path"]
+      assert Map.get(event, :"meta.value") == ["/#hi"]
+    end
+
     test "can use double quotes in query params", %{conn: conn, site: site} do
       q = URI.encode_query(%{"utm_source" => "Something \"quoted\""})
 

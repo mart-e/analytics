@@ -1056,6 +1056,90 @@ defmodule Plausible.Imported.CSVImporterTest do
     end
 
     @tag :tmp_dir
+    test "Form: Submission", %{conn: conn, user: user, tmp_dir: tmp_dir} do
+      exported_site = new_site(owner: user)
+      imported_site = new_site(owner: user)
+
+      insert(:goal, site: exported_site, event_name: "Form: Submission")
+      insert(:goal, site: imported_site, event_name: "Form: Submission")
+
+      t0 =
+        NaiveDateTime.utc_now(:second)
+        |> NaiveDateTime.add(-5, :day)
+        |> NaiveDateTime.beginning_of_day()
+
+      stats =
+        [
+          build(:event,
+            name: "Form: Submission",
+            user_id: 1,
+            pathname: "/anything",
+            # "meta.key": ["path"],
+            # "meta.value": ["/anything"],
+            timestamp: t0
+          ),
+          build(:pageview,
+            user_id: 2,
+            pathname: "/other",
+            timestamp: NaiveDateTime.add(t0, 1, :day)
+          )
+        ]
+        |> Enum.map(fn event -> Map.put(event, :hostname, "csv.test") end)
+
+      populate_stats(exported_site, stats)
+
+      initial_context = %{
+        user: user,
+        tmp_dir: tmp_dir,
+        exported_site: exported_site,
+        imported_site: imported_site
+      }
+
+      %{site_import: site_import} =
+        initial_context
+        |> export_archive()
+        |> download_archive()
+        |> unzip_archive()
+        |> upload_csvs()
+        |> run_import()
+
+      assert %SiteImport{
+               start_date: start_date,
+               end_date: end_date,
+               source: :csv,
+               has_scroll_depth: false,
+               status: :completed
+             } = site_import
+
+      expected_start_date = t0 |> NaiveDateTime.to_date()
+      expected_end_date = t0 |> NaiveDateTime.to_date() |> Date.add(1)
+
+      assert start_date == expected_start_date
+      assert end_date == expected_end_date
+
+      expected_results = [
+        %{"dimensions" => ["/anything"], "metrics" => [1, 1, 50.0]}
+      ]
+
+      query_for_event_props_path_breakdown = fn conn, site ->
+        post(conn, "/api/v2/query", %{
+          "site_id" => site.domain,
+          "metrics" => ["visitors", "events", "conversion_rate"],
+          "date_range" => "all",
+          "filters" => [["is", "event:goal", ["Form: Submission"]]],
+          "order_by" => [["visitors", "desc"]],
+          "include" => %{"imports" => true},
+          "dimensions" => ["event:props:path"]
+        })
+        |> json_response(200)
+        |> Map.fetch!("results")
+      end
+
+      assert query_for_event_props_path_breakdown.(conn, exported_site) == expected_results
+      assert query_for_event_props_path_breakdown.(conn, imported_site) == expected_results
+    end
+
+    @tag :tmp_dir
     test "scroll_depth and time_on_page", %{conn: conn, user: user, tmp_dir: tmp_dir} do
       exported_site = new_site(owner: user)
       imported_site = new_site(owner: user)

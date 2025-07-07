@@ -574,7 +574,7 @@ defmodule Plausible.Exports do
             "if(? in ?, ?, '')",
             e.name,
             ^Plausible.Imported.goals_with_path(),
-            get_by_key(e, :meta, "path")
+            e.pathname
           ),
           :path
         ),

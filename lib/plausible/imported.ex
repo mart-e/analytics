@@ -35,7 +35,7 @@ defmodule Plausible.Imported do
   # Goals which can be filtered by url property
   @goals_with_url ["Outbound Link: Click", "Cloaked Link: Click", "File Download"]
   # Goals which can be filtered by path property
-  @goals_with_path ["404", "WP Form Completions"]
+  @goals_with_path ["404", "WP Form Completions", "Form: Submission"]
 
   @spec schemas() :: [module()]
   def schemas, do: @tables

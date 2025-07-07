@@ -20,6 +20,7 @@ defmodule Plausible.Stats.QueryOptimizer do
     This module manipulates an existing query, updating it according to business logic.
 
     For example, it:
+    0. Hacks event:props:path to event:page
     1. Figures out what the right granularity to group by time is
     2. Adds a missing order_by clause to a query
     3. Updating "time" dimension in order_by to the right granularity
@@ -55,6 +56,7 @@ defmodule Plausible.Stats.QueryOptimizer do
 
   defp pipeline() do
     [
+      &rewrite_event_props_path_to_event_page/1,
       &update_group_by_time/1,
       &add_missing_order_by/1,
       &update_time_in_order_by/1,
@@ -111,6 +113,32 @@ defmodule Plausible.Stats.QueryOptimizer do
       end)
 
     %Query{query | order_by: order_by}
+  end
+
+  defp rewrite_event_props_path_to_event_page(query) do
+    filters_without_goal_is_goal_with_path = query.filters
+      |> Enum.filter(fn f -> case f do
+        [:is, "event:goal", [goal_name]] -> goal_name not in Plausible.Imported.goals_with_path()
+        _ -> true end
+      end)
+
+    if length(filters_without_goal_is_goal_with_path) !== length(query.filters) do
+      remapped_dimensions = Enum.map(query.dimensions, fn d ->
+        case d do
+          "event:props:path" -> "event:page"
+          _ -> d
+        end
+      end)
+      remapped_filters = Enum.map(query.filters, fn f ->
+        case f do
+          [operation, "event:props:path" | rest] -> [operation, "event:page" | rest]
+          _ -> f
+        end
+      end)
+      %Query{query | dimensions: remapped_dimensions, filters: remapped_filters}
+    else
+      query
+    end
   end
 
   @dimensions_hostname_map %{
