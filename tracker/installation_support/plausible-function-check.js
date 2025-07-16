@@ -3,21 +3,52 @@ import { runThrottledCheck } from "./run-check"
 export async function plausibleFunctionCheck(log) {
   log('Checking for Plausible function...')
   const plausibleFound = await waitForPlausibleFunction()
-    
-  if (plausibleFound) {
-    log('Plausible function found. Executing test event...')
+
+  // v2
+  if (plausibleFound.l === true) {
+    log('Plausible function with l=true found. Executing test event...')
     const callbackResult = await testPlausibleCallback(log)
     log(`Test event callback response: ${callbackResult.status}`)
-    return { plausibleInstalled: true, callbackStatus: callbackResult.status }
-  } else {
-    log('Plausible function not found')
-    return { plausibleInstalled: false}
+    return { plausibleOnWindow: true, hasInit: true, callbackStatus: callbackResult.status }
   }
+
+  if (plausibleFound.init) {
+    log('Plausible function with init found. Waiting until init called...')
+    const initCalled = await waitForPlausibleInit()
+    if (initCalled) {
+      const callbackResult = await testPlausibleCallback(log)
+      log(`Test event callback response: ${callbackResult.status}`)
+      return { plausibleOnWindow: true, hasInit: true, callbackStatus: callbackResult.status }
+    } else {
+      log('Plausible function with init found, but it was not called')
+      return { plausibleOnWindow: true, hasInit: true }
+    }
+  }
+ 
+  // v1
+  if (plausibleFound) {
+    log('Plausible function without init found. Executing test event...')
+    const callbackResult = await testPlausibleCallback(log)
+    log(`Test event callback response: ${callbackResult.status}`)
+    return { plausibleOnWindow: true, hasInit: false, callbackStatus: callbackResult.status }
+  }
+
+  log('Plausible function not found')
+    return { plausibleOnWindow: false}
+}
+
+async function waitForPlausibleInit() {
+  const checkFn = (opts) => {
+    if (window.plausible?.l === true) { return true }
+    if (opts.timeout) { return false }
+    return 'continue'
+  }
+  return await runThrottledCheck(checkFn, {timeout: 5000, interval: 100})
 }
 
 async function waitForPlausibleFunction() {
   const checkFn = (opts) => {
-    if (window.plausible) { return true }
+    if (window.plausible) { return window.plausible }
     if (opts.timeout) { return false }
     return 'continue'
   }

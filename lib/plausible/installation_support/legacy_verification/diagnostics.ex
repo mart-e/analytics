@@ -7,6 +7,7 @@ defmodule Plausible.InstallationSupport.LegacyVerification.Diagnostics do
   @errors Plausible.InstallationSupport.LegacyVerification.Errors.all()
 
   defstruct plausible_installed?: false,
+            has_init?: false,
             snippets_found_in_head: 0,
             snippets_found_in_body: 0,
             snippet_found_after_busting_cache?: false,
@@ -29,11 +30,24 @@ defmodule Plausible.InstallationSupport.LegacyVerification.Diagnostics do
     @moduledoc """
     Diagnostics interpretation result.
     """
-    defstruct ok?: false, errors: [], recommendations: []
+    defstruct ok?: false, errors: [], recommendations: [], v2?: false
     @type t :: %__MODULE__{}
   end
 
   @spec interpret(t(), String.t()) :: Result.t()
+  def interpret(
+        %__MODULE__{
+          plausible_installed?: true,
+          has_init?: true,
+          callback_status: callback_status,
+          service_error: nil
+        },
+        _url
+      )
+      when callback_status in [200, 202] do
+    %Result{ok?: true, v2?: true}
+  end
+
   def interpret(
         %__MODULE__{
           plausible_installed?: true,

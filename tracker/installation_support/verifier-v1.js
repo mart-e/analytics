@@ -18,7 +18,8 @@ window.verifyPlausibleInstallation = async function(expectedDataDomain, debug) {
     plausibleFunctionCheck(log)
   ])
 
-  const plausibleInstalled = plausibleFunctionDiagnostics.plausibleInstalled
+  const plausibleInstalled = plausibleFunctionDiagnostics.plausibleOnWindow
+  const hasInit = plausibleFunctionDiagnostics.hasInit
   const callbackStatus = plausibleFunctionDiagnostics.callbackStatus || 0
 
   const dataDomainMismatch = checkDataDomainMismatch(snippetData.nodes, expectedDataDomain)
@@ -53,8 +54,9 @@ window.verifyPlausibleInstallation = async function(expectedDataDomain, debug) {
   return {
     data: {
       completed: true,
-      plausibleInstalled: plausibleFunctionDiagnostics.plausibleInstalled,
-      callbackStatus: plausibleFunctionDiagnostics.callbackStatus || 0,
+      plausibleInstalled: plausibleInstalled,
+      hasInit: hasInit,
+      callbackStatus: callbackStatus || 0,
       snippetsFoundInHead: snippetData.counts.head,
       snippetsFoundInBody: snippetData.counts.body,
       dataDomainMismatch: dataDomainMismatch,

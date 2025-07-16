@@ -96,6 +96,7 @@ defmodule Plausible.InstallationSupport.Checks.Installation do
 
         put_diagnostics(state,
           plausible_installed?: js_data["plausibleInstalled"],
+          has_init?: js_data["hasInit"],
           callback_status: js_data["callbackStatus"]
         )
 

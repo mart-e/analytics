@@ -506,3 +506,22 @@ test.describe('v1 verifier (logging)', () => {
     expect(logs.length).toBe(0)
   })
 })
+
+test.describe('detects v2 installs', () => {
+  test('plausible-web installed with the exact recommended snippet', async ({ page }, { testId }) => {
+    await mockEventResponseSuccess(page)
+
+    const { url } = await initializePageDynamically(page, {
+      testId,
+      scriptConfig: {domain: SOME_DOMAIN, endpoint: 'https://plausible.io/api/event', captureOnLocalhost: true} // needed for tracking to work in test environment
+    })
+
+    const result = await verify(page, {url: url, expectedDataDomain: false, debug: true})
+
+    expect(result.data).toEqual(expect.objectContaining({
+      plausibleInstalled: true,
+      hasInit: true,
+      callbackStatus: 202,
+    }))
+  })
+})
