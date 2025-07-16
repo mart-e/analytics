@@ -522,7 +522,7 @@ defmodule Plausible.InstallationSupport.LegacyVerification.ChecksTest do
 
       assert_receive {:check_start, {Checks.SnippetCacheBust, %State{}}}
 
-      assert_receive {:check_start, {Checks.Installation, %State{}}}
+      assert_receive {:check_start, {Checks.LegacyInstallation, %State{}}}
       assert_receive {:all_checks_done, %State{} = ^final_state}
       refute_receive _
     end
@@ -898,7 +898,7 @@ defmodule Plausible.InstallationSupport.LegacyVerification.ChecksTest do
   end
 
   defp stub_installation(f) when is_function(f, 1) do
-    Req.Test.stub(Checks.Installation, f)
+    Req.Test.stub(Checks.LegacyInstallation, f)
   end
 
   defp stub_fetch_body(status, body) do

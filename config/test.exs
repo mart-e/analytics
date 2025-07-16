@@ -39,9 +39,9 @@ config :plausible, Plausible.InstallationSupport.Checks.FetchBody,
     plug: {Req.Test, Plausible.InstallationSupport.Checks.FetchBody}
   ]
 
-config :plausible, Plausible.InstallationSupport.Checks.Installation,
+config :plausible, Plausible.InstallationSupport.Checks.LegacyInstallation,
   req_opts: [
-    plug: {Req.Test, Plausible.InstallationSupport.Checks.Installation}
+    plug: {Req.Test, Plausible.InstallationSupport.Checks.LegacyInstallation}
   ]
 
 config :plausible, Plausible.HelpScout,

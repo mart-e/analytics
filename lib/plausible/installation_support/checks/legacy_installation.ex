@@ -1,4 +1,4 @@
-defmodule Plausible.InstallationSupport.Checks.Installation do
+defmodule Plausible.InstallationSupport.Checks.LegacyInstallation do
   require Logger
 
   path = Application.app_dir(:plausible, "priv/tracker/installation_support/verifier-v1.js")

@@ -1,6 +1,6 @@
 defmodule Plausible.InstallationSupport.LegacyVerification.Checks do
   @moduledoc """
-  Checks that are performed during v1 site verification.
+  Checks that are performed during tracker script installation verification.
 
   In async execution, each check notifies the caller by sending a message to it.
   """
@@ -15,7 +15,7 @@ defmodule Plausible.InstallationSupport.LegacyVerification.Checks do
     Checks.ScanBody,
     Checks.Snippet,
     Checks.SnippetCacheBust,
-    Checks.Installation
+    Checks.LegacyInstallation
   ]
 
   def run(url, data_domain, opts \\ []) do

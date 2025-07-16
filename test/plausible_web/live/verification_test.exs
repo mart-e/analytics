@@ -188,7 +188,7 @@ defmodule PlausibleWeb.Live.VerificationTest do
   end
 
   defp stub_installation(f) when is_function(f, 1) do
-    Req.Test.stub(Plausible.InstallationSupport.Checks.Installation, f)
+    Req.Test.stub(Plausible.InstallationSupport.Checks.LegacyInstallation, f)
   end
 
   defp stub_fetch_body(status, body) do
