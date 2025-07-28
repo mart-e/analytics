@@ -11,10 +11,7 @@ defmodule Plausible.InstallationSupport.Checks.Installation do
   # Puppeteer wrapper function that executes the vanilla JS verifier code
   @puppeteer_wrapper_code """
   export default async function({ page, context }) {
-    try {
-      await page.setUserAgent(context.userAgent);
-      await page.goto(context.url);
-
+    async function doVerify() {
       await page.evaluate(() => {
         #{@verifier_code}
       });
@@ -22,9 +19,20 @@ defmodule Plausible.InstallationSupport.Checks.Installation do
       return await page.evaluate(async (expectedDataDomain, debug) => {
         return await window.verifyPlausibleInstallation(expectedDataDomain, debug);
       }, context.expectedDataDomain, context.debug);
+    }
+
+    try {
+      await page.setUserAgent(context.userAgent);
+      await page.goto(context.url);
+
+      return await doVerify()
     } catch (error) {
-      const msg = error.message ? error.message : JSON.stringify(error)
-      return {data: {completed: false, error: msg}}
+      try {
+        return await doVerify()
+      } catch (error) {
+        const msg = error.message ? error.message : JSON.stringify(error)
+        return {data: {completed: false, error: msg}}
+      }
     }
   }
   """

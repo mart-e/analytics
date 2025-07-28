@@ -210,6 +210,52 @@ test.describe('v1 verifier (basic diagnostics)', () => {
     expect(result.data.dataDomainMismatch).toBe(false)
   })
 
+  test('completed = true when page navigates on load', async ({ page }, { testId }) => {
+    await mockEventResponseSuccess(page)
+
+    const { url: url2 } = await initializePageDynamically(page, {
+      testId,
+      path: '/something',
+      response: `
+        <head>
+        <script defer data-domain="example.com" src="/tracker/js/plausible.local.js"></script>
+        </head>
+        <body>
+        two
+        </body>
+      `
+    })
+
+
+    const { url } = await initializePageDynamically(page, {
+      testId,
+      response: `
+        <head>
+        <script>console.log('go script'); function go() { const newLocation = "${url2}"; window.location.href = newLocation; console.log('going to', newLocation); }; setTimeout(go, 500);</script>
+        </head>
+        <body>
+        one
+        </body>
+      `
+    })
+
+    const result = await verify(page, {url: url, expectedDataDomain: "example.com"})
+
+    expect(result).toEqual(
+      expect.objectContaining({
+        data: {
+          completed: true,
+          plausibleInstalled: true,
+          snippetsFoundInHead: 1,
+          snippetsFoundInBody: 0,
+          callbackStatus: 202,
+          dataDomainMismatch: false
+        }
+      })
+    )
+  })
+
+
   test('detects dataDomainMismatch', async ({ page }, { testId }) => {
     await mockEventResponseSuccess(page)
 

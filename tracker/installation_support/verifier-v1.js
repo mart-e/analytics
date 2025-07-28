@@ -8,6 +8,17 @@ import { checkCookieBanner } from "./check-cookie-banner"
 import { checkManualExtension } from "./check-manual-extension"
 import { checkUnknownAttributes } from "./check-unknown-attributes"
 
+const MAX_RETRIES = 2
+window.handleVerifyError = async function(error, verifyArgs) {
+  let retries = 0
+  console.log({error, retries, verifyArgs})
+  if (retries < MAX_RETRIES) {
+    retries++
+    return await window.verifyPlausibleInstallation(...verifyArgs)
+  }
+  return {data: {completed: false, error: error?.message ? error.message : JSON.stringify(error)}}
+}
+
 window.verifyPlausibleInstallation = async function(expectedDataDomain, debug) {
   function log(message) {
     if (debug) console.log('[Plausible Verification]', message)
