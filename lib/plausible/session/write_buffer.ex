@@ -117,7 +117,7 @@ defmodule Plausible.Session.WriteBuffer do
           }
         )
 
-        Logger.notice("Failed processing batch #{state.current_batch} from #{state.name}")
+        Logger.warning("Failed processing batch #{state.current_batch} from #{state.name}")
         :ets.insert(state.failed_batches, {state.current_batch})
 
       _ ->
