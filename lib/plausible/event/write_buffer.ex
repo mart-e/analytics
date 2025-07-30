@@ -1,6 +1,8 @@
 defmodule Plausible.Event.WriteBuffer do
   @moduledoc false
 
+  require Logger
+
   %{
     header: header,
     insert_sql: insert_sql,
@@ -17,7 +19,8 @@ defmodule Plausible.Event.WriteBuffer do
         header: unquote(header),
         insert_sql: unquote(insert_sql),
         insert_opts: unquote(insert_opts),
-        encoding_types: unquote(encoding_types)
+        encoding_types: unquote(encoding_types),
+        on_flush: &Plausible.Event.WriteBuffer.on_flush/2
       )
 
     Plausible.Ingestion.WriteBuffer.child_spec(opts)
@@ -31,6 +34,25 @@ defmodule Plausible.Event.WriteBuffer do
 
   def flush do
     Plausible.Ingestion.WriteBuffer.flush(__MODULE__)
+  end
+
+  def on_flush(result, state) do
+    case result do
+      {:failed, error} ->
+        Sentry.capture_message(
+          "Error when trying to flush batch from #{state.name}",
+          extra: %{
+            error: inspect(error)
+          }
+        )
+
+        Logger.notice("Failed processing batch from #{state.name}")
+
+      _ ->
+        :noop
+    end
+
+    state
   end
 
   defp serialize_event(event) do

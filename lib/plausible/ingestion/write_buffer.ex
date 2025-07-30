@@ -22,36 +22,31 @@ defmodule Plausible.Ingestion.WriteBuffer do
     buffer = opts[:buffer] || []
     max_buffer_size = opts[:max_buffer_size] || default_max_buffer_size()
     flush_interval_ms = opts[:flush_interval_ms] || default_flush_interval_ms()
+    on_init = Keyword.get(opts, :on_init, fn _opts -> %{} end)
 
     Process.flag(:trap_exit, true)
     timer = Process.send_after(self(), :tick, flush_interval_ms)
 
-    name = Keyword.fetch!(opts, :name)
-    failed_batches_name = Module.concat(name, "FailedBatches")
-
-    failed_batches =
-      :ets.new(failed_batches_name, [
-        :named_table,
-        :set,
-        :private
-      ])
+    extra_state = on_init.(opts)
 
     {:ok,
-     %{
-       buffer: buffer,
-       timer: timer,
-       name: name,
-       insert_sql: Keyword.fetch!(opts, :insert_sql),
-       insert_opts: Keyword.fetch!(opts, :insert_opts),
-       on_insert: Keyword.get(opts, :on_insert, fn rows, state -> {rows, state} end),
-       encoding_types: Keyword.fetch!(opts, :encoding_types),
-       header: Keyword.fetch!(opts, :header),
-       buffer_size: IO.iodata_length(buffer),
-       max_buffer_size: max_buffer_size,
-       flush_interval_ms: flush_interval_ms,
-       batch: generate_batch(),
-       failed_batches: failed_batches
-     }}
+     Map.merge(
+       %{
+         buffer: buffer,
+         timer: timer,
+         name: Keyword.fetch!(opts, :name),
+         insert_sql: Keyword.fetch!(opts, :insert_sql),
+         insert_opts: Keyword.fetch!(opts, :insert_opts),
+         on_insert: Keyword.get(opts, :on_insert, fn rows, state -> {rows, state} end),
+         on_flush: Keyword.get(opts, :on_flush, fn _result, state -> state end),
+         encoding_types: Keyword.fetch!(opts, :encoding_types),
+         header: Keyword.fetch!(opts, :header),
+         buffer_size: IO.iodata_length(buffer),
+         max_buffer_size: max_buffer_size,
+         flush_interval_ms: flush_interval_ms
+       },
+       extra_state
+     )}
   end
 
   @impl true
@@ -69,9 +64,9 @@ defmodule Plausible.Ingestion.WriteBuffer do
     if state.buffer_size >= state.max_buffer_size do
       Logger.notice("#{state.name} buffer full, flushing to ClickHouse")
       Process.cancel_timer(state.timer)
-      do_flush(state)
+      state = do_flush(state)
       new_timer = Process.send_after(self(), :tick, state.flush_interval_ms)
-      {:noreply, %{state | buffer: [], timer: new_timer, buffer_size: 0, batch: generate_batch()}}
+      {:noreply, %{state | buffer: [], timer: new_timer, buffer_size: 0}}
     else
       {:noreply, state}
     end
@@ -79,20 +74,19 @@ defmodule Plausible.Ingestion.WriteBuffer do
 
   @impl true
   def handle_info(:tick, state) do
-    do_flush(state)
+    state = do_flush(state)
     timer = Process.send_after(self(), :tick, state.flush_interval_ms)
-    {:noreply, %{state | buffer: [], buffer_size: 0, timer: timer, batch: generate_batch()}}
+    {:noreply, %{state | buffer: [], buffer_size: 0, timer: timer}}
   end
 
   @impl true
   def handle_call(:flush, _from, state) do
     %{timer: timer, flush_interval_ms: flush_interval_ms} = state
     Process.cancel_timer(timer)
-    do_flush(state)
+    state = do_flush(state)
     new_timer = Process.send_after(self(), :tick, flush_interval_ms)
 
-    {:reply, :ok,
-     %{state | buffer: [], buffer_size: 0, timer: new_timer, batch: generate_batch()}}
+    {:reply, :ok, %{state | buffer: [], buffer_size: 0, timer: new_timer}}
   end
 
   @impl true
@@ -113,16 +107,16 @@ defmodule Plausible.Ingestion.WriteBuffer do
 
     case buffer do
       [] ->
-        nil
+        state.on_flush.(:empty, state)
 
       _not_empty ->
         Logger.notice("Flushing #{buffer_size} byte(s) RowBinary from #{name}")
         IngestRepo.query!(insert_sql, [header | buffer], insert_opts)
+        state.on_flush.(:succeeded, state)
     end
   catch
-    _, _ ->
-      Logger.notice("Failed proessing batch #{state.batch} from #{state.name}")
-      :ets.insert(state.failed_batches, {state.batch})
+    _, thrown ->
+      state.on_flush.({:failed, thrown}, state)
   end
 
   defp default_flush_interval_ms do
@@ -181,6 +175,4 @@ defmodule Plausible.Ingestion.WriteBuffer do
   end
 
   defp fields_to_ignore(), do: [:acquisition_channel, :interactive?]
-
-  defp generate_batch(), do: System.os_time(:millisecond)
 end
