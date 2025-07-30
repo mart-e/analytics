@@ -26,22 +26,40 @@ defmodule Plausible.Ingestion.WriteBuffer do
     Process.flag(:trap_exit, true)
     timer = Process.send_after(self(), :tick, flush_interval_ms)
 
+    name = Keyword.fetch!(opts, :name)
+    failed_batches_name = Module.concat(name, "FailedBatches")
+
+    failed_batches =
+      :ets.new(failed_batches_name, [
+        :named_table,
+        :set,
+        :private
+      ])
+
     {:ok,
      %{
        buffer: buffer,
        timer: timer,
-       name: Keyword.fetch!(opts, :name),
+       name: name,
        insert_sql: Keyword.fetch!(opts, :insert_sql),
        insert_opts: Keyword.fetch!(opts, :insert_opts),
+       on_insert: Keyword.get(opts, :on_insert, fn rows, state -> {rows, state} end),
+       encoding_types: Keyword.fetch!(opts, :encoding_types),
        header: Keyword.fetch!(opts, :header),
        buffer_size: IO.iodata_length(buffer),
        max_buffer_size: max_buffer_size,
-       flush_interval_ms: flush_interval_ms
+       flush_interval_ms: flush_interval_ms,
+       batch: generate_batch(),
+       failed_batches: failed_batches
      }}
   end
 
   @impl true
-  def handle_cast({:insert, row_binary}, state) do
+  def handle_cast({:insert, rows}, state) do
+    {rows, state} = state.on_insert.(rows, state)
+
+    row_binary = encode_rows(rows, state.encoding_types)
+
     state = %{
       state
       | buffer: [state.buffer | row_binary],
@@ -53,7 +71,7 @@ defmodule Plausible.Ingestion.WriteBuffer do
       Process.cancel_timer(state.timer)
       do_flush(state)
       new_timer = Process.send_after(self(), :tick, state.flush_interval_ms)
-      {:noreply, %{state | buffer: [], timer: new_timer, buffer_size: 0}}
+      {:noreply, %{state | buffer: [], timer: new_timer, buffer_size: 0, batch: generate_batch()}}
     else
       {:noreply, state}
     end
@@ -63,7 +81,7 @@ defmodule Plausible.Ingestion.WriteBuffer do
   def handle_info(:tick, state) do
     do_flush(state)
     timer = Process.send_after(self(), :tick, state.flush_interval_ms)
-    {:noreply, %{state | buffer: [], buffer_size: 0, timer: timer}}
+    {:noreply, %{state | buffer: [], buffer_size: 0, timer: timer, batch: generate_batch()}}
   end
 
   @impl true
@@ -72,7 +90,9 @@ defmodule Plausible.Ingestion.WriteBuffer do
     Process.cancel_timer(timer)
     do_flush(state)
     new_timer = Process.send_after(self(), :tick, flush_interval_ms)
-    {:reply, :ok, %{state | buffer: [], buffer_size: 0, timer: new_timer}}
+
+    {:reply, :ok,
+     %{state | buffer: [], buffer_size: 0, timer: new_timer, batch: generate_batch()}}
   end
 
   @impl true
@@ -99,6 +119,10 @@ defmodule Plausible.Ingestion.WriteBuffer do
         Logger.notice("Flushing #{buffer_size} byte(s) RowBinary from #{name}")
         IngestRepo.query!(insert_sql, [header | buffer], insert_opts)
     end
+  catch
+    _, _ ->
+      Logger.notice("Failed proessing batch #{state.batch} from #{state.name}")
+      :ets.insert(state.failed_batches, {state.batch})
   end
 
   defp default_flush_interval_ms do
@@ -150,5 +174,13 @@ defmodule Plausible.Ingestion.WriteBuffer do
     }
   end
 
+  defp encode_rows(rows, encoding_types) do
+    rows
+    |> Ch.RowBinary._encode_rows(encoding_types)
+    |> IO.iodata_to_binary()
+  end
+
   defp fields_to_ignore(), do: [:acquisition_channel, :interactive?]
+
+  defp generate_batch(), do: System.os_time(:millisecond)
 end

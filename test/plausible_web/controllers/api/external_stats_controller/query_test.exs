@@ -3663,7 +3663,8 @@ defmodule PlausibleWeb.Api.ExternalStatsController.QueryTest do
     negative1 = %{session | pageviews: 0, events: session.events + 1, sign: -1}
     negative2 = %{session | pageviews: 0, events: session.events + 2, sign: -1}
 
-    Plausible.Session.WriteBuffer.insert([negative1, negative2])
+    Plausible.Session.WriteBuffer.insert(nil, negative1)
+    Plausible.Session.WriteBuffer.insert(nil, negative2)
     Plausible.Session.WriteBuffer.flush()
 
     conn =

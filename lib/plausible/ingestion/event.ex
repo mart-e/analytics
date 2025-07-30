@@ -382,7 +382,7 @@ defmodule Plausible.Ingestion.Event do
 
   defp register_session(%__MODULE__{} = event, context) do
     write_buffer_insert =
-      Keyword.get(context, :session_write_buffer_insert, &Plausible.Session.WriteBuffer.insert/1)
+      Keyword.get(context, :session_write_buffer_insert, &Plausible.Session.WriteBuffer.insert/2)
 
     previous_user_id =
       generate_user_id(

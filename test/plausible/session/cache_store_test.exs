@@ -22,12 +22,14 @@ defmodule Plausible.Session.CacheStoreTest do
   setup do
     current_pid = self()
 
-    buffer = fn sessions ->
+    buffer = fn old_session, new_session ->
+      sessions = Enum.reject([old_session, new_session], &is_nil/1)
       send(current_pid, {:buffer, :insert, [sessions]})
       {:ok, sessions}
     end
 
-    slow_buffer = fn sessions ->
+    slow_buffer = fn old_session, new_session ->
+      sessions = Enum.reject([old_session, new_session], &is_nil/1)
       Process.sleep(200)
       send(current_pid, {:slow_buffer, :insert, [sessions]})
       {:ok, sessions}
@@ -193,7 +195,7 @@ defmodule Plausible.Session.CacheStoreTest do
   end
 
   test "exploding event processing is passed through by locking mechanism" do
-    crashing_buffer = fn _sessions ->
+    crashing_buffer = fn _old_session, _new_session ->
       raise "boom"
     end
 

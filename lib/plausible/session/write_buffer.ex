@@ -16,28 +16,42 @@ defmodule Plausible.Session.WriteBuffer do
         name: __MODULE__,
         header: unquote(header),
         insert_sql: unquote(insert_sql),
-        insert_opts: unquote(insert_opts)
+        insert_opts: unquote(insert_opts),
+        encoding_types: unquote(encoding_types),
+        on_insert: &Plausible.Session.WriteBuffer.on_insert/2
       )
 
     Plausible.Ingestion.WriteBuffer.child_spec(opts)
   end
 
-  def insert(sessions) do
-    row_binary =
-      sessions
-      |> Enum.map(fn %{is_bounce: is_bounce} = session ->
-        {:ok, is_bounce} = Plausible.ClickhouseSessionV2.BoolUInt8.dump(is_bounce)
-        session = %{session | is_bounce: is_bounce}
-        Enum.map(unquote(fields), fn field -> Map.fetch!(session, field) end)
-      end)
-      |> Ch.RowBinary._encode_rows(unquote(encoding_types))
-      |> IO.iodata_to_binary()
+  def insert(old_session, new_session) do
+    [old_session, new_session]
+    |> Enum.reject(&is_nil/1)
+    |> insert_sessions()
+  end
 
-    :ok = Plausible.Ingestion.WriteBuffer.insert(__MODULE__, row_binary)
+  defp insert_sessions(sessions) do
+    serialized = Enum.map(sessions, &serialize_session/1)
+
+    :ok = Plausible.Ingestion.WriteBuffer.insert(__MODULE__, serialized)
     {:ok, sessions}
   end
 
   def flush do
     Plausible.Ingestion.WriteBuffer.flush(__MODULE__)
+  end
+
+  def on_insert([new_session], state) do
+    {[new_session], state}
+  end
+
+  def on_insert([old_session, new_session], state) do
+    {[old_session, new_session], state}
+  end
+
+  defp serialize_session(session) do
+    {:ok, is_bounce} = Plausible.ClickhouseSessionV2.BoolUInt8.dump(session.is_bounce)
+    session = %{session | is_bounce: is_bounce}
+    Enum.map(unquote(fields), fn field -> Map.fetch!(session, field) end)
   end
 end

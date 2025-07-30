@@ -9,7 +9,7 @@ defmodule Plausible.Session.CacheStore do
   def lock_telemetry_event, do: @lock_telemetry_event
 
   def on_event(event, session_attributes, prev_user_id, opts \\ []) do
-    buffer_insert = Keyword.get(opts, :buffer_insert, &WriteBuffer.insert/1)
+    buffer_insert = Keyword.get(opts, :buffer_insert, &WriteBuffer.insert/2)
     skip_balancer? = Keyword.get(opts, :skip_balancer?, false)
     lock_requested_at = System.monotonic_time()
 
@@ -55,11 +55,11 @@ defmodule Plausible.Session.CacheStore do
   defp handle_event(event, found_session, session_attributes, buffer_insert) do
     if found_session do
       updated_session = update_session(found_session, event)
-      buffer_insert.([%{found_session | sign: -1}, %{updated_session | sign: 1}])
+      buffer_insert.(%{found_session | sign: -1}, %{updated_session | sign: 1})
       update_session_cache(updated_session)
     else
       new_session = new_session_from_event(event, session_attributes)
-      buffer_insert.([new_session])
+      buffer_insert.(nil, new_session)
       update_session_cache(new_session)
     end
   end
