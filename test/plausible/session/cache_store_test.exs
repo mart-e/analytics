@@ -1,6 +1,8 @@
 defmodule Plausible.Session.CacheStoreTest do
   use Plausible.DataCase
 
+  import ExUnit.CaptureLog
+
   alias Plausible.Session.CacheStore
 
   @session_params %{
@@ -35,7 +37,185 @@ defmodule Plausible.Session.CacheStoreTest do
       {:ok, sessions}
     end
 
-    [buffer: buffer, slow_buffer: slow_buffer]
+    proxy_buffer = fn old_session, new_session ->
+      send(current_pid, {:proxy_buffer, :insert, [[old_session, new_session]]})
+      Plausible.Session.WriteBuffer.insert(old_session, new_session)
+    end
+
+    [buffer: buffer, slow_buffer: slow_buffer, proxy_buffer: proxy_buffer]
+  end
+
+  test "writebuffer batch versioning works", %{proxy_buffer: buffer} do
+    now = System.os_time(:millisecond)
+
+    event1 = build(:event, name: "pageview")
+    event2 = build(:event, name: "pageview", user_id: event1.user_id, site_id: event1.site_id)
+    event3 = build(:event, name: "pageview", user_id: event1.user_id, site_id: event1.site_id)
+
+    CacheStore.on_event(event1, @session_params, nil, buffer_insert: buffer)
+
+    Plausible.Session.WriteBuffer.flush()
+
+    assert_receive({:proxy_buffer, :insert, [[nil, session11]]})
+
+    refute session11.batch
+
+    CacheStore.on_event(event2, @session_params, nil, buffer_insert: buffer)
+    CacheStore.on_event(event3, @session_params, nil, buffer_insert: buffer)
+
+    Plausible.Session.WriteBuffer.flush()
+
+    assert_receive({:proxy_buffer, :insert, [[removed_session11, updated_session12]]})
+    assert_receive({:proxy_buffer, :insert, [[removed_session12, updated_session13]]})
+
+    assert session11.session_id == removed_session11.session_id
+    assert session11.session_id == updated_session12.session_id
+    assert session11.session_id == removed_session12.session_id
+    assert session11.session_id == updated_session13.session_id
+
+    session_q =
+      from s in Plausible.ClickhouseSessionV2,
+        where: s.session_id == ^session11.session_id,
+        order_by: [asc: s.events, desc: s.sign]
+
+    [db_added_session11, db_removed_session11, db_updated_session13] =
+      Plausible.ClickhouseRepo.all(session_q)
+
+    assert db_added_session11.sign == 1
+    assert db_added_session11.events == 1
+    assert is_integer(db_added_session11.batch)
+    assert db_added_session11.batch > 0
+    assert db_added_session11.batch < now
+
+    assert db_removed_session11.sign == -1
+    assert db_removed_session11.events == 1
+    assert is_integer(db_removed_session11.batch)
+    assert db_removed_session11.batch > db_added_session11.batch
+    assert db_removed_session11.batch > now
+
+    assert db_updated_session13.sign == 1
+    assert db_updated_session13.events == 3
+    assert is_integer(db_updated_session13.batch)
+    assert db_updated_session13.batch == db_removed_session11.batch
+  end
+
+  test "writebuffer batch versioning works #2", %{proxy_buffer: buffer} do
+    now = System.os_time(:millisecond)
+
+    event1 = build(:event, name: "pageview")
+    event2 = build(:event, name: "pageview", user_id: event1.user_id, site_id: event1.site_id)
+    event3 = build(:event, name: "pageview", user_id: event1.user_id, site_id: event1.site_id)
+
+    CacheStore.on_event(event1, @session_params, nil, buffer_insert: buffer)
+
+    Plausible.Session.WriteBuffer.flush()
+
+    assert_receive({:proxy_buffer, :insert, [[nil, session11]]})
+
+    refute session11.batch
+
+    CacheStore.on_event(event2, @session_params, nil, buffer_insert: buffer)
+    Plausible.Session.WriteBuffer.flush()
+
+    assert_receive({:proxy_buffer, :insert, [[removed_session11, updated_session12]]})
+
+    CacheStore.on_event(event3, @session_params, nil, buffer_insert: buffer)
+    Plausible.Session.WriteBuffer.flush()
+
+    assert_receive({:proxy_buffer, :insert, [[removed_session12, updated_session13]]})
+
+    assert session11.session_id == removed_session11.session_id
+    assert session11.session_id == updated_session12.session_id
+    assert session11.session_id == removed_session12.session_id
+    assert session11.session_id == updated_session13.session_id
+
+    session_q =
+      from s in Plausible.ClickhouseSessionV2,
+        where: s.session_id == ^session11.session_id,
+        order_by: [asc: s.events, desc: s.sign]
+
+    [
+      db_added_session11,
+      db_removed_session11,
+      db_updated_session12,
+      db_removed_session12,
+      db_updated_session13
+    ] =
+      Plausible.ClickhouseRepo.all(session_q)
+
+    assert db_added_session11.sign == 1
+    assert db_added_session11.events == 1
+    assert is_integer(db_added_session11.batch)
+    assert db_added_session11.batch > 0
+    assert db_added_session11.batch < now
+
+    assert db_removed_session11.sign == -1
+    assert db_removed_session11.events == 1
+    assert is_integer(db_removed_session11.batch)
+    assert db_removed_session11.batch > db_added_session11.batch
+    assert db_removed_session11.batch > now
+
+    assert db_updated_session12.sign == 1
+    assert db_updated_session12.events == 2
+    assert is_integer(db_updated_session12.batch)
+    assert db_updated_session12.batch == db_removed_session11.batch
+
+    assert db_removed_session12.events == 2
+    assert is_integer(db_removed_session12.batch)
+    assert db_removed_session12.batch > db_updated_session12.batch
+
+    assert db_updated_session13.sign == 1
+    assert db_updated_session13.events == 3
+    assert is_integer(db_updated_session13.batch)
+    assert db_updated_session13.batch == db_removed_session12.batch
+  end
+
+  test "writebuffer does not update session updated in failed batches", %{proxy_buffer: buffer} do
+    now = System.os_time(:millisecond)
+
+    event1 = build(:event, name: "pageview")
+    event2 = build(:event, name: "pageview", user_id: event1.user_id, site_id: event1.site_id)
+    event3 = build(:event, name: "pageview", user_id: event1.user_id, site_id: event1.site_id)
+
+    CacheStore.on_event(event1, @session_params, nil, buffer_insert: buffer)
+
+    Plausible.Session.WriteBuffer.flush()
+
+    assert_receive({:proxy_buffer, :insert, [[nil, session11]]})
+
+    refute session11.batch
+
+    CacheStore.on_event(event2, @session_params, nil, buffer_insert: buffer)
+
+    assert capture_log(fn ->
+             Plausible.Session.WriteBuffer.flush_crash()
+           end) =~ "Failed processing batch"
+
+    assert_receive({:proxy_buffer, :insert, [[removed_session11, updated_session12]]})
+
+    CacheStore.on_event(event3, @session_params, nil, buffer_insert: buffer)
+    Plausible.Session.WriteBuffer.flush()
+
+    assert_receive({:proxy_buffer, :insert, [[removed_session12, updated_session13]]})
+
+    assert session11.session_id == removed_session11.session_id
+    assert session11.session_id == updated_session12.session_id
+    assert session11.session_id == removed_session12.session_id
+    assert session11.session_id == updated_session13.session_id
+
+    session_q =
+      from s in Plausible.ClickhouseSessionV2,
+        where: s.session_id == ^session11.session_id,
+        order_by: [asc: s.events, desc: s.sign]
+
+    [db_added_session11] =
+      Plausible.ClickhouseRepo.all(session_q)
+
+    assert db_added_session11.sign == 1
+    assert db_added_session11.events == 1
+    assert is_integer(db_added_session11.batch)
+    assert db_added_session11.batch > 0
+    assert db_added_session11.batch < now
   end
 
   test "event processing is sequential within session", %{
