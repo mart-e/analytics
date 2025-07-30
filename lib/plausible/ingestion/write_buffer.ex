@@ -53,13 +53,18 @@ defmodule Plausible.Ingestion.WriteBuffer do
   def handle_cast({:insert, rows}, state) do
     {rows, state} = state.on_insert.(rows, state)
 
-    row_binary = encode_rows(rows, state.encoding_types)
+    state =
+      if length(rows) > 0 do
+        row_binary = encode_rows(rows, state.encoding_types)
 
-    state = %{
-      state
-      | buffer: [state.buffer | row_binary],
-        buffer_size: state.buffer_size + IO.iodata_length(row_binary)
-    }
+        %{
+          state
+          | buffer: [state.buffer | row_binary],
+            buffer_size: state.buffer_size + IO.iodata_length(row_binary)
+        }
+      else
+        state
+      end
 
     if state.buffer_size >= state.max_buffer_size do
       Logger.notice("#{state.name} buffer full, flushing to ClickHouse")
