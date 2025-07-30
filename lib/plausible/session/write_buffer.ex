@@ -102,7 +102,9 @@ defmodule Plausible.Session.WriteBuffer do
       end
 
     if previous_batch_failed? do
-      # TODO: instruct session cache to delete old_session.session_id
+      session_key = get_session_cache_key(old_session)
+      Plausible.Cache.Adapter.delete(:sessions, session_key)
+
       {[], state}
     else
       old_session = put_batch(old_session, state.current_batch)
@@ -135,9 +137,15 @@ defmodule Plausible.Session.WriteBuffer do
 
   @session_id_index Enum.find_index(fields, &(&1 == :session_id))
   @batch_index Enum.find_index(fields, &(&1 == :batch))
+  @site_id_index Enum.find_index(fields, &(&1 == :site_id))
+  @user_id_index Enum.find_index(fields, &(&1 == :user_id))
 
   defp get_session_id(session) do
     Enum.at(session, @session_id_index)
+  end
+
+  defp get_session_cache_key(session) do
+    {Enum.at(session, @site_id_index), Enum.at(session, @user_id_index)}
   end
 
   defp put_batch(session, batch) do
