@@ -45,6 +45,12 @@ defmodule Plausible.Session.WriteBuffer do
     Plausible.Ingestion.WriteBuffer.flush(__MODULE__)
   end
 
+  # NOTE:  Only for testing
+  @doc false
+  def flush_crash do
+    Plausible.Ingestion.WriteBuffer.flush_crash(__MODULE__)
+  end
+
   def on_init(opts) do
     name = Keyword.fetch!(opts, :name)
     failed_batches_name = Module.concat(name, "FailedBatches")

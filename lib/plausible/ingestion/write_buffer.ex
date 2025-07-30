@@ -17,6 +17,12 @@ defmodule Plausible.Ingestion.WriteBuffer do
     GenServer.call(server, :flush, :infinity)
   end
 
+  # NOTE: Only for testing
+  @doc false
+  def flush_crash(server) do
+    GenServer.call(server, :flush_crash, :infinity)
+  end
+
   @impl true
   def init(opts) do
     buffer = opts[:buffer] || []
@@ -96,12 +102,24 @@ defmodule Plausible.Ingestion.WriteBuffer do
   end
 
   @impl true
+  def handle_call(:flush_crash, _from, state) do
+    %{timer: timer, flush_interval_ms: flush_interval_ms} = state
+    Process.cancel_timer(timer)
+    state = do_flush(state, crash?: true)
+    new_timer = Process.send_after(self(), :tick, flush_interval_ms)
+
+    {:reply, :ok, %{state | buffer: [], buffer_size: 0, timer: new_timer}}
+  end
+
+  @impl true
   def terminate(_reason, %{name: name} = state) do
     Logger.notice("Flushing #{name} buffer before shutdown...")
     do_flush(state)
   end
 
-  defp do_flush(state) do
+  defp do_flush(state, opts \\ []) do
+    crash? = Keyword.get(opts, :crash?, false)
+
     %{
       buffer: buffer,
       buffer_size: buffer_size,
@@ -117,6 +135,11 @@ defmodule Plausible.Ingestion.WriteBuffer do
 
       _not_empty ->
         Logger.notice("Flushing #{buffer_size} byte(s) RowBinary from #{name}")
+
+        if crash? do
+          raise "Intentionally crashing WriteBuffer during flush"
+        end
+
         IngestRepo.query!(insert_sql, [header | buffer], insert_opts)
         state.on_flush.(:succeeded, state)
     end
