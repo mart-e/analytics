@@ -48,6 +48,8 @@ defmodule Plausible.ClickhouseEventV2 do
 
     field :acquisition_channel, Ch, type: "LowCardinality(String)", writable: :never
 
+    field :batch, Ch, type: "UInt64"
+
     # Virtual field used during event processing
     field :interactive?, :boolean, default: true, virtual: true, writable: :never
   end

@@ -75,6 +75,8 @@ defmodule Plausible.ClickhouseSessionV2 do
     field :transferred_from, :string
 
     field :acquisition_channel, Ch, type: "LowCardinality(String)", writable: :never
+
+    field :batch, Ch, type: "UInt64"
   end
 
   def random_uint64() do
