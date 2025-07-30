@@ -99,6 +99,7 @@ defmodule Plausible.Session.WriteBuffer do
       # TODO: instruct session cache to delete old_session.session_id
       {[], state}
     else
+      old_session = put_batch(old_session, state.current_batch)
       new_session = put_batch(new_session, state.current_batch)
       new_session_id = get_session_id(new_session)
       :ets.insert(state.session_batches, {new_session_id, state.current_batch})
