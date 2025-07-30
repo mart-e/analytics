@@ -49,6 +49,7 @@ defmodule Plausible.Ingestion.WriteBuffer do
      )}
   end
 
+  @dialyzer :no_improper_lists
   @impl true
   def handle_cast({:insert, rows}, state) do
     {rows, state} = state.on_insert.(rows, state)
