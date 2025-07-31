@@ -201,14 +201,16 @@ defmodule Plausible.TestUtils do
 
   defp populate_native_stats(events) do
     for event_params <- events do
-      {:ok, session} =
+      {:ok, _session} =
         Plausible.Session.CacheStore.on_event(event_params, event_params, nil,
           skip_balancer?: true
         )
 
-      event_params
-      |> Plausible.ClickhouseEventV2.merge_session(session)
-      |> Plausible.Event.WriteBuffer.insert()
+      #
+      # event_params
+      # |> Plausible.ClickhouseEventV2.merge_session(session)
+      # |> Plausible.Session.WriteBuffer.serialize_event()
+      # |> Plausible.Event.WriteBuffer.insert()
     end
 
     Plausible.Session.WriteBuffer.flush()

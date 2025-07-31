@@ -1,5 +1,7 @@
 defmodule Plausible.Session.CacheStore do
   require Logger
+
+  alias Plausible.ClickhouseEventV2
   alias Plausible.Session.WriteBuffer
 
   @lock_timeout 1000
@@ -9,7 +11,7 @@ defmodule Plausible.Session.CacheStore do
   def lock_telemetry_event, do: @lock_telemetry_event
 
   def on_event(event, session_attributes, prev_user_id, opts \\ []) do
-    buffer_insert = Keyword.get(opts, :buffer_insert, &WriteBuffer.insert/2)
+    buffer_insert = Keyword.get(opts, :buffer_insert, &WriteBuffer.insert/3)
     skip_balancer? = Keyword.get(opts, :skip_balancer?, false)
     lock_requested_at = System.monotonic_time()
 
@@ -46,6 +48,11 @@ defmodule Plausible.Session.CacheStore do
       # Make sure the session is kept active in the in-memory session cache
       refresh_session_cache(found_session, event.timestamp)
 
+      event
+      |> ClickhouseEventV2.merge_session(found_session)
+      |> Plausible.Session.WriteBuffer.serialize_event()
+      |> Plausible.Event.WriteBuffer.insert()
+
       found_session
     else
       :no_session_for_engagement
@@ -55,11 +62,13 @@ defmodule Plausible.Session.CacheStore do
   defp handle_event(event, found_session, session_attributes, buffer_insert) do
     if found_session do
       updated_session = update_session(found_session, event)
-      buffer_insert.(%{found_session | sign: -1}, %{updated_session | sign: 1})
+      event = ClickhouseEventV2.merge_session(event, updated_session)
+      buffer_insert.(%{found_session | sign: -1}, %{updated_session | sign: 1}, event)
       update_session_cache(updated_session)
     else
       new_session = new_session_from_event(event, session_attributes)
-      buffer_insert.(nil, new_session)
+      event = ClickhouseEventV2.merge_session(event, new_session)
+      buffer_insert.(nil, new_session, event)
       update_session_cache(new_session)
     end
   end

@@ -3653,6 +3653,12 @@ defmodule PlausibleWeb.Api.ExternalStatsController.QueryTest do
       )
     ])
 
+    event =
+      Plausible.IngestRepo.get_by!(Plausible.ClickhouseEventV2,
+        site_id: site.id,
+        user_id: user_id
+      )
+
     session =
       Plausible.IngestRepo.get_by!(Plausible.ClickhouseSessionV2,
         site_id: site.id,
@@ -3663,8 +3669,8 @@ defmodule PlausibleWeb.Api.ExternalStatsController.QueryTest do
     negative1 = %{session | pageviews: 0, events: session.events + 1, sign: -1}
     negative2 = %{session | pageviews: 0, events: session.events + 2, sign: -1}
 
-    Plausible.Session.WriteBuffer.insert(nil, negative1)
-    Plausible.Session.WriteBuffer.insert(nil, negative2)
+    Plausible.Session.WriteBuffer.insert(nil, negative1, event)
+    Plausible.Session.WriteBuffer.insert(nil, negative2, event)
     Plausible.Session.WriteBuffer.flush()
 
     conn =

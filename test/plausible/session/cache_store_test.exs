@@ -1,5 +1,5 @@
 defmodule Plausible.Session.CacheStoreTest do
-  use Plausible.DataCase
+  use Plausible.DataCase, async: false
 
   import ExUnit.CaptureLog
 
@@ -24,22 +24,22 @@ defmodule Plausible.Session.CacheStoreTest do
   setup do
     current_pid = self()
 
-    buffer = fn old_session, new_session ->
+    buffer = fn old_session, new_session, _event ->
       sessions = Enum.reject([old_session, new_session], &is_nil/1)
       send(current_pid, {:buffer, :insert, [sessions]})
       {:ok, sessions}
     end
 
-    slow_buffer = fn old_session, new_session ->
+    slow_buffer = fn old_session, new_session, _event ->
       sessions = Enum.reject([old_session, new_session], &is_nil/1)
       Process.sleep(200)
       send(current_pid, {:slow_buffer, :insert, [sessions]})
       {:ok, sessions}
     end
 
-    proxy_buffer = fn old_session, new_session ->
+    proxy_buffer = fn old_session, new_session, event ->
       send(current_pid, {:proxy_buffer, :insert, [[old_session, new_session]]})
-      Plausible.Session.WriteBuffer.insert(old_session, new_session)
+      Plausible.Session.WriteBuffer.insert(old_session, new_session, event)
     end
 
     [buffer: buffer, slow_buffer: slow_buffer, proxy_buffer: proxy_buffer]
@@ -375,7 +375,7 @@ defmodule Plausible.Session.CacheStoreTest do
   end
 
   test "exploding event processing is passed through by locking mechanism" do
-    crashing_buffer = fn _old_session, _new_session ->
+    crashing_buffer = fn _old_session, _new_session, _event ->
       raise "boom"
     end
 

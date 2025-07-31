@@ -143,8 +143,7 @@ defmodule Plausible.Ingestion.Event do
       put_salts: &put_salts/2,
       put_user_id: &put_user_id/2,
       validate_clickhouse_event: &validate_clickhouse_event/2,
-      register_session: &register_session/2,
-      write_to_buffer: &write_to_buffer/2
+      register_session: &register_session/2
     ]
   end
 
@@ -382,7 +381,7 @@ defmodule Plausible.Ingestion.Event do
 
   defp register_session(%__MODULE__{} = event, context) do
     write_buffer_insert =
-      Keyword.get(context, :session_write_buffer_insert, &Plausible.Session.WriteBuffer.insert/2)
+      Keyword.get(context, :session_write_buffer_insert, &Plausible.Session.WriteBuffer.insert/3)
 
     previous_user_id =
       generate_user_id(
@@ -407,18 +406,10 @@ defmodule Plausible.Ingestion.Event do
       {:error, :timeout} ->
         drop(event, :lock_timeout)
 
-      {:ok, session} ->
-        %{
-          event
-          | clickhouse_event: ClickhouseEventV2.merge_session(event.clickhouse_event, session)
-        }
+      {:ok, _session} ->
+        emit_telemetry_buffered(event)
+        event
     end
-  end
-
-  defp write_to_buffer(%__MODULE__{clickhouse_event: clickhouse_event} = event, _context) do
-    {:ok, _} = Plausible.Event.WriteBuffer.insert(clickhouse_event)
-    emit_telemetry_buffered(event)
-    event
   end
 
   @click_id_params ["gclid", "gbraid", "wbraid", "msclkid", "fbclid", "twclid"]

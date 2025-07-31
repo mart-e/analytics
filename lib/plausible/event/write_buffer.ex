@@ -20,6 +20,8 @@ defmodule Plausible.Event.WriteBuffer do
         insert_sql: unquote(insert_sql),
         insert_opts: unquote(insert_opts),
         encoding_types: unquote(encoding_types),
+        on_init: &Plausible.Event.WriteBuffer.on_init/1,
+        on_insert: &Plausible.Event.WriteBuffer.on_insert/2,
         on_flush: &Plausible.Event.WriteBuffer.on_flush/2
       )
 
@@ -27,13 +29,23 @@ defmodule Plausible.Event.WriteBuffer do
   end
 
   def insert(event) do
-    serialized = [serialize_event(event)]
+    serialized = [event]
     :ok = Plausible.Ingestion.WriteBuffer.insert(__MODULE__, serialized)
     {:ok, event}
   end
 
   def flush do
     Plausible.Ingestion.WriteBuffer.flush(__MODULE__)
+  end
+
+  def on_init(_opts) do
+    %{current_batches: []}
+  end
+
+  def on_insert([event], state) do
+    batch = get_batch(event)
+
+    {[event], %{state | current_batches: [batch | state.current_batches]}}
   end
 
   def on_flush(result, state) do
@@ -52,10 +64,12 @@ defmodule Plausible.Event.WriteBuffer do
         :noop
     end
 
-    state
+    %{state | current_batches: []}
   end
 
-  defp serialize_event(event) do
-    Enum.map(unquote(fields), fn field -> Map.fetch!(event, field) end)
+  @batch_index Enum.find_index(fields, &(&1 == :batch))
+
+  defp get_batch(event) do
+    Enum.at(event, @batch_index)
   end
 end

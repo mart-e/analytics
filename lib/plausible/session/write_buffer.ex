@@ -12,6 +12,11 @@ defmodule Plausible.Session.WriteBuffer do
   } =
     Plausible.Ingestion.WriteBuffer.compile_time_prepare(Plausible.ClickhouseSessionV2)
 
+  %{
+    fields: event_fields
+  } =
+    Plausible.Ingestion.WriteBuffer.compile_time_prepare(Plausible.ClickhouseEventV2)
+
   def child_spec(opts) do
     opts =
       Keyword.merge(opts,
@@ -28,16 +33,17 @@ defmodule Plausible.Session.WriteBuffer do
     Plausible.Ingestion.WriteBuffer.child_spec(opts)
   end
 
-  def insert(old_session, new_session) do
+  def insert(old_session, new_session, event) do
     [old_session, new_session]
     |> Enum.reject(&is_nil/1)
-    |> insert_sessions()
+    |> insert_sessions(event)
   end
 
-  defp insert_sessions(sessions) do
+  defp insert_sessions(sessions, event) do
     serialized = Enum.map(sessions, &serialize_session/1)
+    serialized_event = serialize_event(event)
 
-    :ok = Plausible.Ingestion.WriteBuffer.insert(__MODULE__, serialized)
+    :ok = Plausible.Ingestion.WriteBuffer.insert(__MODULE__, {serialized, serialized_event})
     {:ok, sessions}
   end
 
@@ -77,16 +83,19 @@ defmodule Plausible.Session.WriteBuffer do
     }
   end
 
-  def on_insert([new_session], state) do
+  def on_insert({[new_session], event}, state) do
     new_session = put_batch(new_session, state.current_batch)
     new_session_id = get_session_id(new_session)
 
     :ets.insert(state.session_batches, {new_session_id, state.current_batch})
 
+    event = put_event_batch(event, state.current_batch)
+    Plausible.Event.WriteBuffer.insert(event)
+
     {[new_session], state}
   end
 
-  def on_insert([old_session, new_session], state) do
+  def on_insert({[old_session, new_session], event}, state) do
     old_session_id = get_session_id(old_session)
 
     previous_batch_failed? =
@@ -110,7 +119,12 @@ defmodule Plausible.Session.WriteBuffer do
       old_session = put_batch(old_session, state.current_batch)
       new_session = put_batch(new_session, state.current_batch)
       new_session_id = get_session_id(new_session)
+
       :ets.insert(state.session_batches, {new_session_id, state.current_batch})
+
+      event = put_event_batch(event, state.current_batch)
+      Plausible.Event.WriteBuffer.insert(event)
+
       {[old_session, new_session], state}
     end
   end
@@ -137,6 +151,7 @@ defmodule Plausible.Session.WriteBuffer do
 
   @session_id_index Enum.find_index(fields, &(&1 == :session_id))
   @batch_index Enum.find_index(fields, &(&1 == :batch))
+  @event_batch_index Enum.find_index(event_fields, &(&1 == :batch))
   @site_id_index Enum.find_index(fields, &(&1 == :site_id))
   @user_id_index Enum.find_index(fields, &(&1 == :user_id))
 
@@ -150,6 +165,15 @@ defmodule Plausible.Session.WriteBuffer do
 
   defp put_batch(session, batch) do
     List.replace_at(session, @batch_index, batch)
+  end
+
+  defp put_event_batch(event, batch) do
+    List.replace_at(event, @event_batch_index, batch)
+  end
+
+  @doc false
+  def serialize_event(event) do
+    Enum.map(unquote(event_fields), fn field -> Map.fetch!(event, field) end)
   end
 
   defp serialize_session(session) do
