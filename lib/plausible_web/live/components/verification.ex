@@ -17,6 +17,7 @@ defmodule PlausibleWeb.Live.Components.Verification do
     default: "We're visiting your site to ensure that everything is working"
   )
 
+  attr(:url_to_verify, :string, default: nil)
   attr(:super_admin?, :boolean, default: false)
   attr(:finished?, :boolean, default: false)
   attr(:success?, :boolean, default: false)
@@ -57,8 +58,17 @@ defmodule PlausibleWeb.Live.Components.Verification do
         <div class="mt-8">
           <.title>
             <span :if={@finished? and @success?}>Success!</span>
-            <span :if={not @finished?}>Verifying your installation</span>
-
+            <%= if FunWithFlags.enabled?(:scriptv2, for: "site:#{@domain}") do %>
+              <span :if={not @finished?}>
+                {if @url_to_verify,
+                  do: "Verifying your installation at #{@url_to_verify}",
+                  else: "Looking for the URL based on your site domain"}
+              </span>
+            <% else %>
+              <span :if={not @finished?}>
+                Verifying your installation
+              </span>
+            <% end %>
             <span :if={@finished? and not @success? and @interpretation}>
               {List.first(@interpretation.errors)}
             </span>

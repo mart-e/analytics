@@ -122,13 +122,15 @@ defmodule PlausibleWeb.Live.Verification do
     if is_pid(socket.assigns.checks_pid) and Process.alive?(socket.assigns.checks_pid) do
       {:noreply, socket}
     else
-      case Plausible.RateLimit.check_rate(
-             "site_verification_#{socket.assigns.domain}",
-             :timer.minutes(60),
-             3
-           ) do
-        {:allow, _} -> :ok
-        {:deny, _} -> :timer.sleep(@slowdown_for_frequent_checking)
+      if Application.get_env(:plausible, :environment) != "dev" do
+        case Plausible.RateLimit.check_rate(
+               "site_verification_#{socket.assigns.domain}",
+               :timer.minutes(60),
+               3
+             ) do
+          {:allow, _} -> :ok
+          {:deny, _} -> :timer.sleep(@slowdown_for_frequent_checking)
+        end
       end
 
       url_to_verify = "https://#{socket.assigns.domain}"
@@ -138,7 +140,7 @@ defmodule PlausibleWeb.Live.Verification do
       {:ok, pid} =
         if(FunWithFlags.enabled?(:scriptv2, for: socket.assigns.site),
           do:
-            Verification.Checks.run(url_to_verify, domain, installation_type,
+            Verification.Checks.run(domain, installation_type,
               report_to: report_to,
               slowdown: socket.assigns.slowdown
             ),
@@ -155,10 +157,17 @@ defmodule PlausibleWeb.Live.Verification do
     end
   end
 
-  def handle_info({:check_start, {check, _state}}, socket) do
-    update_component(socket,
-      message: check.report_progress_as()
-    )
+  def handle_info({:check_start, {check, state}}, socket) do
+    to_update = [message: check.report_progress_as()]
+
+    to_update =
+      if is_binary(state.url) do
+        Keyword.put(to_update, :url_to_verify, state.url)
+      else
+        to_update
+      end
+
+    update_component(socket, to_update)
 
     {:noreply, socket}
   end

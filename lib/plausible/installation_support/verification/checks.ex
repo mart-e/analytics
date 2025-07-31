@@ -10,11 +10,12 @@ defmodule Plausible.InstallationSupport.Verification.Checks do
   require Logger
 
   @checks [
+    Checks.Url,
     Checks.InstallationV2,
     Checks.InstallationV2CacheBust
   ]
 
-  def run(url, data_domain, installation_type, opts \\ []) do
+  def run(data_domain, installation_type, opts \\ []) do
     checks = Keyword.get(opts, :checks, @checks)
     report_to = Keyword.get(opts, :report_to, self())
     async? = Keyword.get(opts, :async?, true)
@@ -22,7 +23,6 @@ defmodule Plausible.InstallationSupport.Verification.Checks do
 
     init_state =
       %State{
-        url: url,
         data_domain: data_domain,
         report_to: report_to,
         diagnostics: %Verification.Diagnostics{
