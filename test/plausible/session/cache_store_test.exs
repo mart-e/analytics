@@ -218,6 +218,72 @@ defmodule Plausible.Session.CacheStoreTest do
     assert db_added_session11.batch < now
   end
 
+  test "writebuffer does not update session for which event batch failed", %{proxy_buffer: buffer} do
+    now = System.os_time(:millisecond)
+
+    event1 = build(:event, name: "pageview")
+    event2 = build(:event, name: "pageview", user_id: event1.user_id, site_id: event1.site_id)
+    event3 = build(:event, name: "pageview", user_id: event1.user_id, site_id: event1.site_id)
+
+    CacheStore.on_event(event1, @session_params, nil, buffer_insert: buffer)
+
+    Plausible.Session.WriteBuffer.flush()
+    Plausible.Event.WriteBuffer.flush()
+
+    assert_receive({:proxy_buffer, :insert, [[nil, session11]]})
+
+    refute session11.batch
+
+    CacheStore.on_event(event2, @session_params, nil, buffer_insert: buffer)
+
+    Plausible.Session.WriteBuffer.flush()
+
+    assert capture_log(fn ->
+             Plausible.Event.WriteBuffer.flush_crash()
+           end) =~ "Failed processing batch"
+
+    assert_receive({:proxy_buffer, :insert, [[removed_session11, updated_session12]]})
+
+    CacheStore.on_event(event3, @session_params, nil, buffer_insert: buffer)
+    Plausible.Session.WriteBuffer.flush()
+    Plausible.Event.WriteBuffer.flush()
+
+    assert_receive({:proxy_buffer, :insert, [[removed_session12, updated_session13]]})
+
+    assert session11.session_id == removed_session11.session_id
+    assert session11.session_id == updated_session12.session_id
+    assert session11.session_id == removed_session12.session_id
+    assert session11.session_id == updated_session13.session_id
+
+    session_q =
+      from s in Plausible.ClickhouseSessionV2,
+        where: s.session_id == ^session11.session_id,
+        order_by: [asc: s.events, desc: s.sign]
+
+    [db_added_session11, db_removed_session11, db_updated_session12] =
+      Plausible.ClickhouseRepo.all(session_q)
+
+    assert db_added_session11.sign == 1
+    assert db_added_session11.events == 1
+    assert is_integer(db_added_session11.batch)
+    assert db_added_session11.batch > 0
+    assert db_added_session11.batch < now
+
+    assert db_removed_session11.sign == -1
+    assert db_removed_session11.events == 1
+    assert is_integer(db_removed_session11.batch)
+    assert db_removed_session11.batch > db_added_session11.batch
+    assert db_removed_session11.batch > now
+
+    assert db_updated_session12.sign == 1
+    assert db_updated_session12.events == 2
+    assert is_integer(db_updated_session12.batch)
+    assert db_updated_session12.batch == db_removed_session11.batch
+
+    assert :ets.lookup(Plausible.Session.WriteBuffer.FailedBatches, db_updated_session12.batch) ==
+             [{db_updated_session12.batch}]
+  end
+
   test "event processing is sequential within session", %{
     buffer: buffer,
     slow_buffer: slow_buffer,

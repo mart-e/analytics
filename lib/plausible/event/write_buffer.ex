@@ -38,6 +38,12 @@ defmodule Plausible.Event.WriteBuffer do
     Plausible.Ingestion.WriteBuffer.flush(__MODULE__)
   end
 
+  # NOTE:  Only for testing
+  @doc false
+  def flush_crash do
+    Plausible.Ingestion.WriteBuffer.flush_crash(__MODULE__)
+  end
+
   def on_init(_opts) do
     %{current_batches: []}
   end
@@ -58,7 +64,11 @@ defmodule Plausible.Event.WriteBuffer do
           }
         )
 
-        Logger.notice("Failed processing batch from #{state.name}")
+        Logger.warning("Failed processing batch from #{state.name}")
+
+        Enum.each(state.current_batches, fn batch ->
+          :ets.insert(Plausible.Session.WriteBuffer.FailedBatches, {batch})
+        end)
 
       _ ->
         :noop

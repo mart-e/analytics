@@ -66,7 +66,8 @@ defmodule Plausible.Session.WriteBuffer do
       :ets.new(failed_batches_name, [
         :named_table,
         :set,
-        :private
+        :public,
+        write_concurrency: true
       ])
 
     session_batches =
