@@ -27,7 +27,7 @@ jobs:
         env:
           DOCKER_METADATA_PR_HEAD_SHA: true
         with:
-          images: ghcr.io/plausible/analytics/ee
+          images: ghcr.io/mart-e/analytics/ee
           tags: |
             type=ref,event=pr
             type=ref,event=branch
@@ -67,7 +67,7 @@ jobs:
           url: ${{ secrets.BUILD_NOTIFICATION_URL }}
           method: 'POST'
           customHeaders: '{"Content-Type": "application/json"}'
-          data: '{"content": "<a href=\"https://github.com/plausible/analytics/actions/workflows/build-private-images.yml\">Build failed</a>"}'
+          data: '{"content": "<a href=\"https://github.com/mart-e/analytics/actions/workflows/build-private-images.yml\">Build failed</a>"}'
 
       - name: Get first line and Co-Authored-By lines of the commit message
         if: ${{ success() && github.ref == 'refs/heads/master' }}
